@@ -10,12 +10,14 @@ import {
   horarios as seedHorarios,
   weekEvents as seedWeekEvents,
   movimentacoes as seedMovimentacoes,
+  statusDe,
   type Patient,
   type EstoqueStatus,
   type ApptStatus,
   type AgendaEvent,
 } from './data'
 import { PROC_BOM, type BOMLine } from './lib/bom'
+import { DEMO_DATA } from './lib/demo'
 import { fmtDur, fmtMoney, parseDurMin, parseMoney } from './lib/fmt'
 import type { HorarioDia } from './lib/horarios'
 
@@ -103,10 +105,12 @@ interface Store {
   moveAppointment: (id: string, date: string, start: number) => void
 
   estoque: EstoqueItem[]
-  addEstoque: (item: Omit<BaseEstoque, 'status'> & { status?: EstoqueStatus }) => void
+  addEstoque: (item: Omit<BaseEstoque, 'status' | 'minAuto'> & { status?: EstoqueStatus; minAuto?: boolean }) => void
   updateEstoque: (name: string, patch: Partial<BaseEstoque>) => void
   registrarSaida: (name: string, qtd: number, desc?: string) => void
   deleteEstoque: (name: string) => void
+  /** Confirma o mínimo sugerido de um (ou de todos os) item(ns) — some a marca "sugerido". */
+  confirmarMinimos: (names?: string[]) => void
 
   movimentos: Movimento[]
   /** Baixa automática dos materiais da ficha técnica ao concluir um atendimento. */
@@ -143,13 +147,17 @@ export function initials(name: string) {
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '??'
 }
 
-export function estoqueStatus(qtd: string, min: string): EstoqueStatus {
-  const q = Number(qtd)
-  const m = Number(min)
-  if (Number.isNaN(q) || Number.isNaN(m)) return 'ok'
-  if (q <= Math.max(1, Math.floor(m / 2))) return 'critico'
-  if (q < m) return 'baixo'
-  return 'ok'
+export const estoqueStatus = statusDe
+
+/** Um item precisa ser comprado quando está abaixo do mínimo definido. */
+export function precisaComprar(e: { qtd: string; min: string }): boolean {
+  const m = Number(e.min)
+  return m > 0 && Number(e.qtd) < m
+}
+
+/** Quanto comprar para voltar ao mínimo (nunca menos que 1 quando faltando). */
+export function faltando(e: { qtd: string; min: string }): number {
+  return Math.max(0, (Number(e.min) || 0) - (Number(e.qtd) || 0))
 }
 
 /* ---------- Supabase helpers (no-op quando não configurado) ---------- */
@@ -198,12 +206,14 @@ const seedPatientRows: PatientRow[] = seedPatients
 const seedMovs: Movimento[] = seedMovimentacoes.map((m, i) => ({ id: `seed-mov${i}`, ...m }))
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [patients, setPatients] = useState<PatientRow[]>(seedPatientRows)
-  const [funil, setFunil] = useState<FunilCol[]>(seedFunilCols)
+  // dados de pacientes só existem se estiverem no banco (ver lib/demo.ts);
+  // estoque, procedimentos e horários são cadastro real e carregam sempre.
+  const [patients, setPatients] = useState<PatientRow[]>(DEMO_DATA ? seedPatientRows : [])
+  const [funil, setFunil] = useState<FunilCol[]>(DEMO_DATA ? seedFunilCols : STAGES.map((stage) => ({ stage, cards: [] })))
   const [estoque, setEstoque] = useState<EstoqueItem[]>(seedEstoque)
   const [procedimentos, setProcedimentos] = useState<Procedimento[]>(seedProcs)
-  const [events, setEvents] = useState<EventItem[]>(seedEvents)
-  const [movimentos, setMovimentos] = useState<Movimento[]>(seedMovs)
+  const [events, setEvents] = useState<EventItem[]>(DEMO_DATA ? seedEvents : [])
+  const [movimentos, setMovimentos] = useState<Movimento[]>(DEMO_DATA ? seedMovs : [])
   const [horarios, setHorarios] = useState<HorarioDia[]>(seedHorarios.map((h) => ({ day: h.d, hours: h.h, closed: !!('off' in h && h.off) })))
   const [anamnese, setAnamnese] = useState<Record<string, Record<string, unknown>>>({})
 
@@ -240,7 +250,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setFunil(cols)
       }
       if (!sR.error && sR.data && sR.data.length > 0) {
-        setEstoque(sR.data.map((r) => ({ _id: r.id, item: r.item, cat: r.cat ?? '', qtd: String(r.qtd), min: String(r.min), un: r.un ?? '', valor: r.valor ?? '', marca: r.marca ?? '', validade: r.validade ?? '', lote: r.lote ?? '', fornecedor: r.fornecedor ?? '', status: (r.status ?? 'ok') as EstoqueStatus, ent: r.ent ?? '' })))
+        setEstoque(sR.data.map((r) => ({ _id: r.id, item: r.item, cat: r.cat ?? '', qtd: String(r.qtd), min: String(r.min), un: r.un ?? '', valor: r.valor ?? '', marca: r.marca ?? '', validade: r.validade ?? '', lote: r.lote ?? '', fornecedor: r.fornecedor ?? '', status: (r.status ?? 'ok') as EstoqueStatus, ent: r.ent ?? '', minAuto: !!r.min_auto })))
       }
       if (!prR.error && prR.data && prR.data.length > 0) {
         // colunas numéricas novas (dur_min/valor) com fallback de parse dos textos legados
@@ -359,19 +369,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } else {
         const temp = nextId()
         const status = item.status ?? estoqueStatus(item.qtd, item.min)
-        setEstoque((prev) => [{ _id: temp, ...item, status }, ...prev])
-        insertRow('stock_items', { item: item.item, cat: item.cat, un: item.un, valor: item.valor, marca: item.marca, validade: item.validade, lote: item.lote, fornecedor: item.fornecedor, qtd: Number(item.qtd), min: Number(item.min), status, ent: item.ent })
+        const minAuto = item.minAuto ?? false
+        setEstoque((prev) => [{ _id: temp, ...item, status, minAuto }, ...prev])
+        insertRow('stock_items', { item: item.item, cat: item.cat, un: item.un, valor: item.valor, marca: item.marca, validade: item.validade, lote: item.lote, fornecedor: item.fornecedor, qtd: Number(item.qtd), min: Number(item.min), min_auto: minAuto, status, ent: item.ent })
           .then((d) => { if (d) setEstoque((prev) => prev.map((e) => (e._id === temp ? { ...e, _id: d.id } : e))) })
       }
       setMovimentos((prev) => [entrada, ...prev].slice(0, 40))
     },
     updateEstoque: (name, patch) => {
       const cur = estoqueRef.current.find((e) => e.item === name)
-      setEstoque((prev) => prev.map((e) => { if (e.item !== name) return e; const merged = { ...e, ...patch }; return { ...merged, status: estoqueStatus(merged.qtd, merged.min) } }))
+      // mexer no mínimo é a confirmação dele: a marca "sugerido" cai
+      const minAuto = cur && patch.min !== undefined && patch.min !== cur.min ? false : undefined
+      setEstoque((prev) => prev.map((e) => {
+        if (e.item !== name) return e
+        const merged = { ...e, ...patch, ...(minAuto === false ? { minAuto: false } : {}) }
+        return { ...merged, status: estoqueStatus(merged.qtd, merged.min) }
+      }))
       if (cur?._id) {
         const merged = { ...cur, ...patch }
-        updateRow('stock_items', cur._id, { item: merged.item, cat: merged.cat, un: merged.un, valor: merged.valor, marca: merged.marca, validade: merged.validade, lote: merged.lote, fornecedor: merged.fornecedor, qtd: Number(merged.qtd), min: Number(merged.min), status: estoqueStatus(merged.qtd, merged.min) })
+        updateRow('stock_items', cur._id, { item: merged.item, cat: merged.cat, un: merged.un, valor: merged.valor, marca: merged.marca, validade: merged.validade, lote: merged.lote, fornecedor: merged.fornecedor, qtd: Number(merged.qtd), min: Number(merged.min), min_auto: minAuto, status: estoqueStatus(merged.qtd, merged.min) })
       }
+    },
+    confirmarMinimos: (names) => {
+      const alvo = new Set(names ?? estoqueRef.current.filter((e) => e.minAuto).map((e) => e.item))
+      setEstoque((prev) => prev.map((e) => (alvo.has(e.item) ? { ...e, minAuto: false } : e)))
+      estoqueRef.current.forEach((e) => { if (alvo.has(e.item) && e._id) updateRow('stock_items', e._id, { min_auto: false }) })
     },
     registrarSaida: (name, qtd, desc) => {
       const cur = estoqueRef.current.find((e) => e.item === name)
@@ -393,6 +415,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!bom || bom.length === 0) return 0
       let totalItens = 0
       bom.forEach((line) => {
+        if (line.qtd <= 0) return // item reutilizável: aparece na ficha, mas não dá baixa
         const cur = estoqueRef.current.find((e) => e.item.toLowerCase() === line.item.toLowerCase())
         if (!cur) return
         const next = String(Math.max(0, Number(cur.qtd) - line.qtd))

@@ -6,6 +6,7 @@ import { useStore } from '../store'
 import { useToast } from './Toast'
 import { BRAND } from '../brand'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 import { parseISO, brDate, isVencidaBr } from '../lib/dates'
 
 interface Notif { id: string; title: string; body: string }
@@ -155,6 +156,7 @@ export function GlobalSearch({ width = 300, placeholder = 'Buscar criança ou re
 export function UserMenu() {
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { email, signOut } = useAuth()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useOutsideClick(ref, () => setOpen(false), open)
@@ -166,11 +168,11 @@ export function UserMenu() {
         <div className="menu-pop" style={{ left: 52, bottom: 0, top: 'auto', width: 200 }}>
           <div style={{ padding: '6px 10px 8px', borderBottom: '1px solid #f2f5fb', marginBottom: 4 }}>
             <div style={{ font: "800 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{BRAND.dentist}</div>
-            <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7' }}>{BRAND.role}</div>
+            <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email || BRAND.role}</div>
           </div>
           <button className="menu-item" onClick={() => { setOpen(false); navigate('/configuracoes') }}>Meu perfil</button>
           <button className="menu-item" onClick={() => { setOpen(false); navigate('/configuracoes') }}>Configurações</button>
-          <button className="menu-item danger" onClick={() => { setOpen(false); toast('Sessão encerrada.', 'info') }}>Sair</button>
+          <button className="menu-item danger" onClick={async () => { setOpen(false); await signOut(); toast('Sessão encerrada.', 'info') }}>Sair</button>
         </div>
       )}
     </div>

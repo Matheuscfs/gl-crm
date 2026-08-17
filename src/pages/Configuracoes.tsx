@@ -7,6 +7,7 @@ import { Menu } from '../components/Menu'
 import { useToast } from '../components/Toast'
 import { supabase } from '../lib/supabase'
 import { useGoogle } from '../lib/GoogleProvider'
+import { maskCpf } from '../lib/masks'
 import { useStore, type HorarioDia } from '../store'
 
 interface UserRow { id: string; name: string; role: string; initials: string }
@@ -32,7 +33,7 @@ export default function Configuracoes() {
   const [section, setSection] = useState('Perfil da clínica')
   const [templates, setTemplates] = useState(SEED_TEMPLATES)
   const [editTpl, setEditTpl] = useState<(typeof SEED_TEMPLATES)[number] | null>(null)
-  const [clinic, setClinic] = useState({ name: 'Consultório Dra. Gabriela Lorenzi', cro: 'CRO 39889', cnpj: '00.000.000/0001-00', address: 'Cascavel-PR', phone: '(45) 90000-0000', pix_key: '' })
+  const [clinic, setClinic] = useState({ name: 'Consultório Dra. Gabriela Lorenzi', cro: 'CRO 39889', cnpj: '00.000.000/0001-00', cpf: '', address: 'Cascavel-PR', phone: '(45) 90000-0000', pix_key: '' })
   // cópia local editável; o Salvar comita no store (que persiste e propaga para a Agenda)
   const [hours, setHours] = useState<HorarioDia[]>(horarios)
   useEffect(() => { setHours(horarios) }, [horarios])
@@ -51,7 +52,7 @@ export default function Configuracoes() {
         sb.from('team_users').select('*').order('created_at'),
       ])
       if (cancelled) return
-      if (!cs.error && cs.data) setClinic({ name: cs.data.name ?? '', cro: cs.data.cro ?? '', cnpj: cs.data.cnpj ?? '', address: cs.data.address ?? '', phone: cs.data.phone ?? '', pix_key: (cs.data.pix_key as string | null) ?? '' })
+      if (!cs.error && cs.data) setClinic({ name: cs.data.name ?? '', cro: cs.data.cro ?? '', cnpj: cs.data.cnpj ?? '', cpf: (cs.data.cpf as string | null) ?? '', address: cs.data.address ?? '', phone: cs.data.phone ?? '', pix_key: (cs.data.pix_key as string | null) ?? '' })
       if (!mt.error && mt.data?.length) setTemplates(mt.data.map((r) => ({ id: r.id as string, title: (r.title as string) ?? '', body: (r.body as string) ?? '' })))
       if (!tu.error && tu.data?.length) setUsers(tu.data.map((r) => ({ id: r.id as string, name: (r.name as string) ?? '', role: (r.role as string) ?? '', initials: (r.initials as string) ?? '' })))
     })().catch((e) => console.error('[supabase] config', e))
@@ -118,6 +119,10 @@ export default function Configuracoes() {
                   <Field label="CRO"><TextInput value={clinic.cro} onChange={(e) => setClinic({ ...clinic, cro: e.target.value })} /></Field>
                   <Field label="CNPJ"><TextInput value={clinic.cnpj} onChange={(e) => setClinic({ ...clinic, cnpj: e.target.value })} /></Field>
                 </FieldRow>
+                <Field label="CPF da profissional">
+                  <TextInput value={clinic.cpf} onChange={(e) => setClinic({ ...clinic, cpf: maskCpf(e.target.value) })} placeholder="000.000.000-00" />
+                  <span style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7', marginTop: 4 }}>Sai no rodapé do recibo e identifica a titular no Carnê-Leão.</span>
+                </Field>
                 <Field label="Endereço"><TextInput value={clinic.address} onChange={(e) => setClinic({ ...clinic, address: e.target.value })} /></Field>
                 <Field label="Telefone"><TextInput value={clinic.phone} onChange={(e) => setClinic({ ...clinic, phone: e.target.value })} /></Field>
                 <Field label="Chave PIX">

@@ -535,6 +535,248 @@ html, body { overscroll-behavior-y: none; }
   ::-webkit-scrollbar { width: 0; height: 0; }
 }
 
+/* ---------- Login ---------- */
+.login-bg {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px calc(24px + env(safe-area-inset-left)) calc(24px + env(safe-area-inset-bottom));
+  background: radial-gradient(120% 90% at 50% 0%, #eef2ff 0%, var(--frame-bg) 60%, #dde5f6 100%);
+}
+.login-card {
+  width: 100%; max-width: 380px;
+  display: flex; flex-direction: column; gap: 14px;
+  background: #fff; border-radius: 22px; padding: 30px 28px 24px;
+  box-shadow: 0 30px 70px -34px rgba(38, 60, 110, 0.55);
+  animation: dialog-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.login-logo { width: 150px; height: 74px; object-fit: contain; align-self: center; margin-bottom: 2px; }
+.login-title { font: 800 19px var(--font); color: var(--ink); text-align: center; }
+.login-sub { font: 600 12.5px var(--font); color: var(--muted); text-align: center; margin: -8px 0 6px; }
+.login-msg { font: 700 12px var(--font); border-radius: 10px; padding: 10px 12px; }
+.login-msg.erro { background: var(--red-bg); color: var(--red-dark); }
+.login-msg.ok { background: var(--green-bg); color: var(--green-dark); }
+.login-link {
+  border: none; background: none; cursor: pointer; align-self: center;
+  font: 700 12px var(--font); color: var(--teal); padding: 4px;
+}
+.login-link:hover { color: var(--teal-dark); text-decoration: underline; }
+.login-foot {
+  font: 600 11px var(--font); color: var(--muted); text-align: center;
+  border-top: 1px solid var(--line-soft); padding-top: 12px; margin-top: 2px; line-height: 1.5;
+}
+
+/* ============================================================
+   Modo tablet — leitura estilo Apple Saúde (Health)
+   Ativado pelo shell TabletShell (<= 1180px): tab bar embaixo,
+   títulos grandes, cartões arredondados e muito respiro.
+   ============================================================ */
+.app.tablet {
+  display: block; position: relative;
+  margin: 0; height: 100vh; height: 100dvh;
+  border-radius: 0; box-shadow: none;
+  background: var(--bg);
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+}
+.app.tablet .main { height: 100%; }
+
+/* topo com título grande (o "large title" do iOS) */
+.hl-topbar {
+  flex: none;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 14px;
+  padding: calc(18px + env(safe-area-inset-top)) 20px 12px;
+  background: var(--bg);
+}
+.hl-title { font: 800 30px/1.15 var(--font); color: var(--ink); letter-spacing: -0.5px; }
+.hl-sub { font: 600 13.5px var(--font); color: var(--muted); margin-top: 3px; }
+.hl-hello { font: 700 15px var(--font); color: var(--slate); padding: 2px 2px 6px; }
+
+.hl-scroll {
+  flex: 1; overflow: auto; min-height: 0;
+  padding: 6px 20px 28px;
+  display: flex; flex-direction: column; gap: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.hl-section {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  font: 800 19px var(--font); color: var(--ink); letter-spacing: -0.2px;
+  margin: 14px 2px 2px;
+}
+.hl-section-link { border: none; background: none; cursor: pointer; font: 700 13.5px var(--font); color: var(--teal); }
+
+.hl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+.hl-grid-2 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+/* cartão base do modo Health */
+.app.tablet .hl-card,
+.hl-card {
+  background: #fff; border: none; border-radius: 20px;
+  box-shadow: 0 2px 10px -6px rgba(38, 60, 110, 0.28);
+  padding: 16px 17px; text-align: left; cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.18s ease;
+}
+.hl-card:active { transform: scale(0.985); }
+
+/* destaque: lista de compras */
+.hl-buy { display: flex; align-items: center; gap: 13px; width: 100%; }
+.hl-buy-emoji {
+  width: 42px; height: 42px; border-radius: 13px; flex: none; font-size: 20px;
+  display: flex; align-items: center; justify-content: center; background: var(--chip-bg);
+}
+.hl-buy-label { display: block; font: 800 16px var(--font); color: var(--ink); }
+.hl-buy-sub {
+  display: block; font: 600 12.5px var(--font); color: var(--muted); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hl-buy-num { font: 800 24px var(--font); color: var(--amber); flex: none; }
+
+/* cartões grandes de destaque (Resumo) */
+.hl-tile { display: flex; flex-direction: column; gap: 4px; border-left: 4px solid var(--area); }
+.hl-tile-top { display: flex; align-items: center; gap: 8px; font: 700 13.5px var(--font); color: var(--slate); }
+.hl-tile-emoji {
+  width: 26px; height: 26px; border-radius: 9px; font-size: 14px; flex: none;
+  display: flex; align-items: center; justify-content: center; background: var(--area-bg);
+}
+.hl-tile-num { font: 800 34px/1.1 var(--font); color: var(--area); letter-spacing: -1px; }
+.hl-tile-sub { font: 600 12.5px var(--font); color: var(--muted); }
+
+/* cartões de área do estoque */
+.hl-area { display: flex; flex-direction: column; gap: 2px; position: relative; }
+.hl-area.on { box-shadow: 0 0 0 2px var(--area), 0 2px 10px -6px rgba(38, 60, 110, 0.28); }
+.hl-area-emoji {
+  width: 36px; height: 36px; border-radius: 12px; font-size: 18px; margin-bottom: 6px;
+  display: flex; align-items: center; justify-content: center; background: var(--area-bg);
+}
+.hl-area-name { font: 700 13.5px var(--font); color: var(--ink); }
+.hl-area-num { font: 800 24px var(--font); color: var(--area); letter-spacing: -0.5px; }
+.hl-area-sub { font: 600 11.5px var(--font); color: var(--muted); }
+
+/* listas em cartão único (linhas separadas por hairline, como no iOS) */
+.hl-list {
+  background: #fff; border-radius: 20px; overflow: hidden;
+  box-shadow: 0 2px 10px -6px rgba(38, 60, 110, 0.28);
+}
+.hl-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 15px; border-bottom: 1px solid var(--line-soft);
+  color: inherit;
+}
+.hl-row:last-child { border-bottom: none; }
+.hl-row-emoji {
+  width: 38px; height: 38px; border-radius: 12px; flex: none; font-size: 18px;
+  display: flex; align-items: center; justify-content: center;
+}
+.hl-row-avatar {
+  width: 38px; height: 38px; border-radius: 50%; flex: none; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--teal-bg); color: var(--teal-dark); font: 800 13px var(--font);
+}
+.hl-row-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.hl-row-time { width: 46px; flex: none; font: 700 14px var(--font); color: var(--ink); }
+.hl-row-main {
+  flex: 1; min-width: 0; text-align: left; border: none; background: none;
+  padding: 0; cursor: pointer; font: inherit;
+}
+.hl-row-name {
+  display: block; font: 700 14.5px var(--font); color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hl-row-sub { display: block; font: 600 12.5px var(--font); color: var(--muted); margin-top: 1px; }
+.hl-row-buy { color: var(--amber-dark); font-weight: 800; margin-left: 8px; }
+.hl-empty { padding: 20px 16px; font: 600 13px var(--font); color: var(--muted); text-align: center; }
+.hl-foot { padding: 22px 0 6px; text-align: center; font: 600 11.5px var(--font); color: var(--faint); }
+
+/* stepper − / + para contagem rápida */
+.hl-step { display: flex; align-items: center; gap: 4px; flex: none; }
+.hl-step button {
+  width: 36px; height: 36px; border-radius: 12px; flex: none;
+  border: none; background: var(--chip-bg); color: var(--slate);
+  font: 700 19px var(--font); line-height: 1; cursor: pointer;
+  transition: background 0.14s ease, transform 0.1s ease;
+}
+.hl-step button:active:not(:disabled) { transform: scale(0.9); background: var(--teal-bg); }
+.hl-step button:disabled { opacity: 0.4; cursor: not-allowed; }
+.hl-step b { min-width: 34px; text-align: center; font: 800 16px var(--font); }
+
+/* aviso de mínimos sugeridos (também usado no desktop) */
+.minimo-aviso {
+  display: flex; align-items: center; gap: 11px;
+  background: var(--amber-bg); border-radius: 14px; padding: 11px 14px;
+  font: 600 12.5px var(--font); color: var(--amber-dark);
+}
+.minimo-aviso b { font-weight: 800; }
+
+/* chips de área (desktop) */
+.area-chip {
+  display: inline-flex; align-items: center; gap: 6px; position: relative;
+  padding: 7px 13px; border-radius: 20px; background: var(--chip-bg);
+  font: 700 12px var(--font); color: var(--slate); flex: none;
+}
+.area-chip[data-on] { background: var(--teal-bg); color: var(--teal-dark); }
+.area-chip .tnum { opacity: 0.6; }
+.area-chip-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+.chev-right { display: inline-flex; transform: rotate(180deg); }
+
+/* ---------- Tab bar inferior ---------- */
+.tabbar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 35;
+  display: flex; align-items: stretch;
+  height: calc(64px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--line);
+}
+.tabbar-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  border: none; background: none; cursor: pointer; color: var(--muted);
+  font: 700 10.5px var(--font); padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s ease, transform 0.1s ease;
+}
+.tabbar-item:active { transform: scale(0.94); }
+.tabbar-item.active { color: var(--teal); }
+
+/* ---------- Folha "Mais" ---------- */
+.sheet-overlay {
+  position: fixed; inset: 0; z-index: 46;
+  background: rgba(15, 30, 32, 0.4);
+  display: flex; align-items: flex-end;
+  animation: overlay-in 0.18s ease both;
+}
+.sheet {
+  width: 100%; background: var(--bg);
+  border-radius: 22px 22px 0 0; padding: 8px 14px calc(18px + env(safe-area-inset-bottom));
+  animation: dialog-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  max-height: 82vh; overflow: auto;
+}
+.sheet-grab { width: 38px; height: 5px; border-radius: 3px; background: var(--border-strong); margin: 4px auto 12px; }
+.sheet-head { display: flex; align-items: center; gap: 12px; padding: 4px 8px 14px; }
+.sheet-logo { width: 46px; height: 46px; object-fit: contain; border-radius: 12px; background: #fff; }
+.sheet-name { font: 800 15px var(--font); color: var(--ink); }
+.sheet-role { font: 600 12px var(--font); color: var(--muted); }
+.sheet-item {
+  display: flex; align-items: center; gap: 13px; width: 100%;
+  padding: 15px 14px; margin-bottom: 8px; border: none; cursor: pointer;
+  background: #fff; border-radius: 15px;
+  font: 700 14.5px var(--font); color: var(--ink); text-align: left;
+}
+.sheet-item span:first-of-type { flex: 1; min-width: 0; }
+.sheet-item.active { color: var(--teal); background: var(--teal-bg); }
+.sheet-item .chev-right { color: var(--faint); }
+.sheet-item:active { transform: scale(0.99); }
+
+/* páginas antigas dentro do shell de tablet: topbar vira título grande */
+.app.tablet .topbar {
+  height: auto; min-height: 0; flex-wrap: wrap; gap: 10px;
+  padding: calc(16px + env(safe-area-inset-top)) 20px 12px;
+  background: var(--bg); border-bottom: none;
+}
+.app.tablet .topbar-title { font-size: 27px; letter-spacing: -0.4px; }
+.app.tablet .route-view > :last-child { background: var(--bg); }
+.app.tablet .card { border-radius: 18px; border-color: transparent; box-shadow: 0 2px 10px -6px rgba(38, 60, 110, 0.28); }
+
 /* app instalado na tela inicial: tela cheia, respeitando notch/safe areas */
 @media (display-mode: standalone) {
   body { background: #fff; }

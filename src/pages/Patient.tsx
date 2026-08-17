@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
-import { useParams, Navigate } from 'react-router-dom'
+import { useParams, Navigate, Link } from 'react-router-dom'
 import PatientHeader, { Breadcrumb } from './patient/PatientHeader'
+import { EmptyState } from '../components/States'
+import { DEMO_DATA } from '../lib/demo'
 import Odontograma from './patient/Odontograma'
 import Anamnese from './patient/Anamnese'
 import Historico from './patient/Historico'
@@ -18,15 +20,32 @@ export default function Patient() {
   const { id, tab } = useParams()
   const { patients, loadAnamnese } = useStore()
   const name = id ? decodeURIComponent(id) : ''
-  const patient: PatientT = patients.find((p) => p.name === name) ?? seedPatients[0]
-  const patientId = (patient as PatientT & { _id?: string })._id ?? null
-  const tabs = tabsFor(patient.perfil)
+  // sem o cadastro carregado não inventamos um paciente: o fallback de demonstração
+  // só vale quando os dados fictícios estão ligados (ver lib/demo.ts)
+  const found = patients.find((p) => p.name === name)
+  const patient: PatientT | undefined = found ?? (DEMO_DATA ? seedPatients[0] : undefined)
+  const patientId = (patient as (PatientT & { _id?: string }) | undefined)?._id ?? null
+  const tabs = tabsFor(patient?.perfil)
   const valid = new Set(tabs.map((t) => t.slug))
 
   useEffect(() => {
     if (patientId) loadAnamnese(patientId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientId])
+
+  if (!patient) {
+    return (
+      <>
+        <Breadcrumb name={name || 'Paciente'} />
+        <EmptyState
+          icon="users"
+          title="Paciente não encontrado"
+          desc="Este cadastro não está na lista carregada do banco. Volte para Pacientes e abra pela lista."
+          action={<Link to="/pacientes" className="btn btn-primary btn-md">Ir para Pacientes</Link>}
+        />
+      </>
+    )
+  }
 
   if (!tab || !valid.has(tab)) {
     return <Navigate to="odontograma" replace />
