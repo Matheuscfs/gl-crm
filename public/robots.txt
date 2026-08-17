@@ -1,0 +1,3 @@
+# CRM de uso interno da clínica — não deve ser indexado.
+User-agent: *
+Disallow: /

@@ -1,12 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Menu } from '../../components/Menu'
 import { Button } from '../../components/Button'
 import { useToast } from '../../components/Toast'
 import { useCollection, usePatientId } from '../../lib/useCollection'
 import { PrintDoc } from '../../components/PrintDoc'
+import { ReciboModal, ReciboDoc, type ReciboDraft } from '../../components/Recibo'
+import { listRecibos, createRecibo, type Recibo } from '../../lib/recibos'
+import { useClinic } from '../../lib/clinic'
 import { CountUp } from '../../components/ui'
-import { BRAND } from '../../brand'
+import { useStore } from '../../store'
+import { todayISO } from '../../lib/dates'
+import { parseMoney as toNumber } from '../../lib/money'
 import { PARCELA_STATUS, isSeedPatient, type ParcelaStatus } from '../../data'
 
 const GRID = '2fr 1fr 1fr 1fr 34px'
@@ -36,17 +41,49 @@ export default function FinanceiroPaciente() {
     (item) => ({ ref: item.ref, venc: item.venc, val: item.val, status: item.status }),
     isSeedPatient(patientName) ? SEED : [],
   )
-  const [receipt, setReceipt] = useState<{ items: Row[]; total: number } | null>(null)
+  const { patients } = useStore()
+  const clinic = useClinic()
+  // recibo numerado e registrado (mesmo fluxo do Financeiro → entra no Carnê-Leão)
+  const [draft, setDraft] = useState<ReciboDraft | null>(null)
+  const [emitindo, setEmitindo] = useState(false)
+  const [recibo, setRecibo] = useState<Recibo | null>(null)
+  const [ultimo, setUltimo] = useState(0)
+  useEffect(() => { listRecibos().then((rs) => setUltimo(rs.reduce((m, r) => Math.max(m, r.number), 0))) }, [])
 
   const parseMoney = (s: string) => Number(String(s).replace(/[^\d,]/g, '').replace(',', '.')) || 0
   const brMoney = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   const total = rows.reduce((s, r) => s + parseMoney(r.val), 0)
   const pago = rows.filter((r) => r.status === 'pago').reduce((s, r) => s + parseMoney(r.val), 0)
+
+  const pac = patients.find((p) => p.name === patientName)
   const emitirRecibo = (items: Row[]) => {
     if (items.length === 0) return toast('Nenhuma parcela paga para gerar recibo.', 'error')
-    setReceipt({ items, total: items.reduce((s, r) => s + parseMoney(r.val), 0) })
+    const soma = items.reduce((s, r) => s + parseMoney(r.val), 0)
+    setDraft({
+      // pediátrico: quem paga (e recebe o recibo) é o responsável
+      payerName: pac?.resp && pac.resp !== '—' ? pac.resp.split('·')[0].trim() : patientName,
+      payerCpf: (pac?.respCpf?.trim() || pac?.cpf || '').trim(),
+      description: `Tratamento odontológico — ${items.map((r) => r.ref).join(', ')}`,
+      value: soma.toFixed(2).replace('.', ','),
+      issuedOn: todayISO(),
+      origin: 'parcela',
+      refId: items.map((r) => r.id).join(','),
+      patientId: patientId ?? undefined,
+    })
   }
-  const extenso = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+
+  const confirmarRecibo = async () => {
+    if (!draft) return
+    const value = toNumber(draft.value)
+    if (!draft.payerName.trim() || !value) return toast('Informe pagador e valor.', 'error')
+    setEmitindo(true)
+    const novo = await createRecibo({ ...draft, payerName: draft.payerName.trim(), value }, ultimo)
+    setEmitindo(false)
+    setUltimo(novo.number)
+    setDraft(null)
+    setRecibo(novo)
+    toast(`Recibo nº ${String(novo.number).padStart(4, '0')} emitido.`)
+  }
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -81,7 +118,7 @@ export default function FinanceiroPaciente() {
               <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <Menu items={[
                   { label: 'Marcar como pago', disabled: r.status === 'pago', onClick: () => { save({ ...r, status: 'pago' }); toast('Parcela paga.') } },
-                  { label: 'Gerar recibo', disabled: r.status !== 'pago', onClick: () => emitirRecibo([r]) },
+                  { label: 'Emitir recibo', disabled: r.status !== 'pago', onClick: () => emitirRecibo([r]) },
                   { label: 'Enviar cobrança', onClick: () => toast('Cobrança enviada.', 'info') },
                 ]} />
               </span>
@@ -93,36 +130,10 @@ export default function FinanceiroPaciente() {
         <Button variant="outline" onClick={() => emitirRecibo(rows.filter((r) => r.status === 'pago'))}>Gerar recibo (parcelas pagas)</Button>
       </div>
 
-      <PrintDoc open={!!receipt} title="Recibo de pagamento" onClose={() => setReceipt(null)}>
-        {receipt && (
-          <>
-            <p className="doc-p" style={{ lineHeight: 1.8 }}>
-              Recebi de <b>{patientName}</b> a importância de <b>R$ {extenso(receipt.total)}</b>, referente ao(s) pagamento(s) discriminado(s) abaixo, para maior clareza firmo o presente recibo.
-            </p>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 12 }}>
-              <thead>
-                <tr style={{ borderBottom: '1.5px solid #2b2b2b', textAlign: 'left' }}>
-                  <th style={{ padding: '6px 4px' }}>Referência</th><th>Vencimento</th><th style={{ textAlign: 'right' }}>Valor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {receipt.items.map((r) => (
-                  <tr key={r.id} style={{ borderBottom: '1px solid #ddd' }}>
-                    <td style={{ padding: '6px 4px' }}>{r.ref}</td><td>{r.venc}</td><td style={{ textAlign: 'right' }}>{r.val}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 4px', marginTop: 4, borderTop: '1.5px solid #2b2b2b', fontWeight: 800, fontSize: 14 }}>
-              <span>Total recebido</span><span>{brMoney(receipt.total)}</span>
-            </div>
-            <div style={{ marginTop: 26, fontSize: 12 }}>{BRAND.city ?? 'Cascavel-PR'}, {new Date().toLocaleDateString('pt-BR')}.</div>
-            <div style={{ marginTop: 40, textAlign: 'center', fontSize: 12 }}>
-              _______________________________________________<br />
-              <b>{BRAND.dentist}</b><br />{BRAND.role}
-            </div>
-          </>
-        )}
+      <ReciboModal open={!!draft} draft={draft} onChange={setDraft} onClose={() => setDraft(null)} onEmit={confirmarRecibo} saving={emitindo} />
+
+      <PrintDoc open={!!recibo} title="Recibo" onClose={() => setRecibo(null)}>
+        {recibo && <ReciboDoc recibo={recibo} clinic={clinic} />}
       </PrintDoc>
     </div>
   )

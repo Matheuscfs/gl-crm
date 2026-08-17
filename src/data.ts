@@ -1,4 +1,5 @@
 /* Mock data layer mirroring the design prototype (CRM Odontopediátrico.dc.html). */
+import { INVENTARIO, INVENTARIO_DATA } from './inventario'
 
 export type ApptStatus =
   | 'agendado'
@@ -516,13 +517,6 @@ export const horarios = [
 
 /* ---------- Estoque ---------- */
 
-export const estoqueCards = [
-  { label: 'Itens cadastrados', value: '48', tone: '#3f6bf5', sub: '8 categorias' },
-  { label: 'Abaixo do mínimo', value: '04', tone: '#d97706', sub: 'repor esta semana' },
-  { label: 'Em falta / crítico', value: '01', tone: '#dc2626', sub: 'Luvas M' },
-  { label: 'Valor em estoque', value: 'R$ 9.740', tone: '#3f6bf5', sub: 'custo estimado' },
-]
-
 export type EstoqueStatus = 'ok' | 'baixo' | 'critico'
 export const ESTOQUE_STATUS: Record<EstoqueStatus, { label: string; bg: string; fg: string; qty: string }> = {
   ok: { label: 'Em dia', bg: '#e7f5ec', fg: '#127436', qty: '#1a2426' },
@@ -530,16 +524,49 @@ export const ESTOQUE_STATUS: Record<EstoqueStatus, { label: string; bg: string; 
   critico: { label: 'Crítico', bg: '#fbeaea', fg: '#a81e1e', qty: '#a81e1e' },
 }
 
-export const estoque: { item: string; cat: string; qtd: string; min: string; un: string; valor: string; marca: string; validade: string; lote: string; fornecedor: string; status: EstoqueStatus; ent: string }[] = [
-  { item: 'Anestésico lidocaína 2%', cat: 'Anestésicos', qtd: '42', min: '30', un: 'tubetes', valor: '3,20', marca: 'DFL', validade: '2026-09-30', lote: 'L2301', fornecedor: 'Dental Cremer', status: 'ok', ent: '12/07' },
-  { item: 'Resina composta A2', cat: 'Restauradores', qtd: '6', min: '8', un: 'seringas', valor: '89,90', marca: '3M', validade: '2027-01-15', lote: 'R8842', fornecedor: 'Dental Speed', status: 'baixo', ent: '28/06' },
-  { item: 'Flúor gel acidulado', cat: 'Prevenção', qtd: '3', min: '4', un: 'frascos', valor: '14,50', marca: 'Maquira', validade: '2026-08-10', lote: 'F1107', fornecedor: 'Dental Cremer', status: 'baixo', ent: '02/07' },
-  { item: 'Selante fotopolimerizável', cat: 'Prevenção', qtd: '11', min: '6', un: 'seringas', valor: '42,00', marca: 'FGM', validade: '2027-03-01', lote: '', fornecedor: 'Dental Speed', status: 'ok', ent: '02/07' },
-  { item: 'Luvas de procedimento M', cat: 'Descartáveis', qtd: '2', min: '5', un: 'caixas', valor: '38,00', marca: 'Descarpack', validade: '', lote: '', fornecedor: 'Dental Cremer', status: 'critico', ent: '20/06' },
-  { item: 'Ácido fosfórico 37%', cat: 'Restauradores', qtd: '5', min: '4', un: 'seringas', valor: '9,80', marca: 'FGM', validade: '2026-07-05', lote: 'A0925', fornecedor: 'Dental Speed', status: 'ok', ent: '28/06' },
-  { item: 'Sugador descartável', cat: 'Descartáveis', qtd: '14', min: '10', un: 'pacotes', valor: '6,40', marca: '', validade: '', lote: '', fornecedor: '', status: 'ok', ent: '12/07' },
-  { item: 'Broca esférica carbide', cat: 'Instrumental', qtd: '3', min: '6', un: 'unid', valor: '12,00', marca: 'KG Sorensen', validade: '', lote: '', fornecedor: '', status: 'baixo', ent: '15/05' },
-]
+/** `q < min` → repor; metade (ou menos) do mínimo → crítico. Mínimo 0 = não definido. */
+export function statusDe(qtd: number | string, min: number | string): EstoqueStatus {
+  const q = Number(qtd)
+  const m = Number(min)
+  if (Number.isNaN(q) || Number.isNaN(m)) return 'ok'
+  if (m <= 0) return q <= 0 ? 'critico' : 'ok'
+  if (q <= 0 || q * 2 < m) return 'critico'
+  return q < m ? 'baixo' : 'ok'
+}
+
+export interface EstoqueRow {
+  item: string
+  cat: string
+  qtd: string
+  min: string
+  un: string
+  valor: string
+  marca: string
+  validade: string
+  lote: string
+  fornecedor: string
+  status: EstoqueStatus
+  ent: string
+  /** Mínimo ainda é a sugestão automática (não confirmado pela clínica). */
+  minAuto: boolean
+}
+
+/** Estoque inicial = inventário real do consultório, com mínimo sugerido a confirmar. */
+export const estoque: EstoqueRow[] = INVENTARIO.map((i) => ({
+  item: i.item,
+  cat: i.cat,
+  qtd: String(i.qtd),
+  min: String(i.min),
+  un: i.un,
+  valor: '',
+  marca: '',
+  validade: '',
+  lote: '',
+  fornecedor: '',
+  status: statusDe(i.qtd, i.min),
+  ent: INVENTARIO_DATA,
+  minAuto: true,
+}))
 
 export const procChips = ['Restauração em resina', 'Profilaxia + flúor', 'Selante', 'Pulpotomia', 'Extração']
 

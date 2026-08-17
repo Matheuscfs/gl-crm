@@ -5,15 +5,18 @@ import { Modal } from '../components/Modal'
 import { Field, TextInput, Select } from '../components/Field'
 import { useToast } from '../components/Toast'
 import { supabase } from '../lib/supabase'
+import { DEMO_DATA } from '../lib/demo'
 import { EmptyState } from '../components/States'
 import { parcelas as seedParcelas, PARCELA_STATUS, FIN_CATEGORIAS, type ParcelaStatus } from '../data'
 import { parseMoney, brMoney } from '../lib/money'
 import { exportCsv } from '../lib/exportCsv'
-import { isVencidaBr, todayISO, brDate } from '../lib/dates'
+import { isVencidaBr, todayISO, brDate, brToIso } from '../lib/dates'
 import { DateField } from '../components/DateField'
 import { CountUp } from '../components/ui'
 import { useStore } from '../store'
 import { PrintDoc } from '../components/PrintDoc'
+import { ReciboModal, ReciboDoc, type ReciboDraft, type ClinicInfo } from '../components/Recibo'
+import { listRecibos, createRecibo, carneLeaoRows, CARNE_LEAO_HEADERS, type Recibo } from '../lib/recibos'
 import { pixPayload } from '../lib/pix'
 import { waLink, contactPhone } from '../lib/whats'
 import { BRAND } from '../brand'
@@ -52,12 +55,18 @@ export default function Financeiro() {
   const { toast } = useToast()
   const { patients } = useStore()
   const [month, setMonth] = useState(MONTHS[0])
-  const [rows, setRows] = useState<Row[]>(seedParcelas.map((p, i) => ({ id: `seed-${i}`, ...p, status: deriveStatus(p.status, p.venc) })))
+  // parcelas de demonstração só sem banco configurado — com banco, o que vale é o que está gravado
+  const [rows, setRows] = useState<Row[]>(DEMO_DATA ? seedParcelas.map((p, i) => ({ id: `seed-${i}`, ...p, status: deriveStatus(p.status, p.venc) })) : [])
   const [entries, setEntries] = useState<Entry[]>([])
   const [entryModal, setEntryModal] = useState<'receita' | 'despesa' | null>(null)
   const [form, setForm] = useState({ description: '', cat: '', sub: '', value: '', date: todayISO(), status: 'pago' as 'pago' | 'aberto' })
-  const [recibo, setRecibo] = useState<Row | null>(null)
-  const [clinic, setClinic] = useState({ name: BRAND.clinic, cro: BRAND.cro, cnpj: '', address: BRAND.city, pixKey: '' })
+  const [clinic, setClinic] = useState<ClinicInfo & { pixKey: string }>({ name: BRAND.clinic, cro: BRAND.cro, cnpj: '', cpf: '', address: BRAND.city, pixKey: '' })
+  // recibos: rascunho em edição, recibo emitido (impressão) e histórico
+  const [draft, setDraft] = useState<ReciboDraft | null>(null)
+  const [emitindo, setEmitindo] = useState(false)
+  const [recibo, setRecibo] = useState<Recibo | null>(null)
+  const [recibos, setRecibos] = useState<Recibo[]>([])
+  const [verRecibos, setVerRecibos] = useState(false)
 
   useEffect(() => {
     if (!supabase) return
@@ -68,8 +77,9 @@ export default function Financeiro() {
     })
     supabase.from('clinic_settings').select('*').maybeSingle().then(({ data, error }) => {
       if (cancelled || error || !data) return
-      setClinic({ name: data.name ?? BRAND.clinic, cro: data.cro ?? BRAND.cro, cnpj: data.cnpj ?? '', address: data.address ?? BRAND.city, pixKey: (data.pix_key as string | null) ?? '' })
+      setClinic({ name: data.name ?? BRAND.clinic, cro: data.cro ?? BRAND.cro, cnpj: data.cnpj ?? '', cpf: (data.cpf as string | null) ?? '', address: data.address ?? BRAND.city, pixKey: (data.pix_key as string | null) ?? '' })
     })
+    listRecibos().then((rs) => { if (!cancelled) setRecibos(rs) })
     supabase.from('finance_entries').select('*').order('created_at', { ascending: false }).then(({ data, error }) => {
       if (cancelled || error || !data) return
       setEntries(data.map((r) => ({ id: r.id as string, date: (r.entry_date as string) ?? '', type: (r.type as 'receita' | 'despesa') ?? 'receita', description: (r.description as string) ?? '', category: (r.category as string) ?? '', value: Number(r.value) || 0, status: (r.status as 'pago' | 'aberto') ?? 'pago' })))
@@ -83,13 +93,64 @@ export default function Financeiro() {
     toast(msg)
   }
 
-  /** Telefone do responsável da parcela: pelo patient_id ou casando o nome com o cadastro. */
-  const phoneFor = (r: Row): string => {
+  /** Paciente da parcela: pelo patient_id ou casando o nome do responsável com o cadastro. */
+  const patientFor = (r: Row) => {
     const byId = r.patientId ? patients.find((p) => (p as { _id?: string })._id === r.patientId) : undefined
-    if (byId) return contactPhone(byId)
+    if (byId) return byId
     const respNorm = r.resp.trim().toLowerCase()
-    const byName = patients.find((p) => (p.resp ?? '').split('·')[0].trim().toLowerCase() === respNorm || p.name.toLowerCase() === respNorm)
-    return contactPhone(byName)
+    return patients.find((p) => (p.resp ?? '').split('·')[0].trim().toLowerCase() === respNorm || p.name.toLowerCase() === respNorm)
+  }
+
+  /** Telefone do responsável da parcela. */
+  const phoneFor = (r: Row): string => contactPhone(patientFor(r))
+
+  /** Abre o recibo já preenchido a partir de uma parcela. */
+  const pedirRecibo = (r: Row) => {
+    const pat = patientFor(r)
+    // pediátrico cobra do responsável: o CPF do recibo é o de quem paga
+    const cpf = (pat?.respCpf?.trim() || pat?.cpf || '').trim()
+    setDraft({
+      payerName: r.resp && r.resp !== '—' ? r.resp.split('·')[0].trim() : (pat?.name ?? ''),
+      payerCpf: cpf,
+      description: r.ref ? `Tratamento odontológico — ${r.ref}` : 'Tratamento odontológico',
+      value: r.val,
+      issuedOn: brToIso(r.venc) || todayISO(),
+      origin: 'parcela',
+      refId: r.id,
+      patientId: (pat as { _id?: string } | undefined)?._id,
+    })
+  }
+
+  /** Abre o recibo a partir de um lançamento de receita. */
+  const reciboDeEntrada = (e: Entry) => setDraft({
+    payerName: '',
+    payerCpf: '',
+    description: e.description,
+    value: e.value.toFixed(2).replace('.', ','),
+    issuedOn: brToIso(e.date) || todayISO(),
+    origin: 'lancamento',
+    refId: e.id,
+  })
+
+  const emitirRecibo = async () => {
+    if (!draft) return
+    const value = parseMoney(draft.value)
+    if (!draft.payerName.trim()) return toast('Informe quem consta como pagador.', 'error')
+    if (!value) return toast('Informe um valor maior que zero.', 'error')
+    setEmitindo(true)
+    const ultimo = recibos.reduce((m, r) => Math.max(m, r.number), 0)
+    const novo = await createRecibo({ ...draft, payerName: draft.payerName.trim(), value }, ultimo)
+    setEmitindo(false)
+    setRecibos((prev) => [novo, ...prev])
+    setDraft(null)
+    setRecibo(novo)
+    toast(`Recibo nº ${String(novo.number).padStart(4, '0')} emitido.`)
+  }
+
+  const exportarCarneLeao = () => {
+    if (!recibos.length) return toast('Nenhum recibo emitido ainda.', 'error')
+    exportCsv('carne-leao-recibos', CARNE_LEAO_HEADERS, carneLeaoRows(recibos))
+    toast(`${recibos.length} recibo(s) exportado(s) para o Carnê-Leão.`)
   }
 
   const pixFor = (r: Row): string | null => {
@@ -213,6 +274,7 @@ export default function Financeiro() {
         <div className="topbar-title">Financeiro</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Dropdown label="Período" value={month} options={MONTHS} onChange={setMonth} active />
+          <Button variant="outline" onClick={() => setVerRecibos(true)}>Recibos{recibos.length ? ` (${recibos.length})` : ''}</Button>
           <Button variant="outline" onClick={() => { setForm({ description: '', cat: '', sub: '', value: '', date: todayISO(), status: 'aberto' }); setEntryModal('despesa') }}>− Despesa</Button>
           <Button variant="teal-soft" onClick={() => { setForm({ description: '', cat: '', sub: '', value: '', date: todayISO(), status: 'pago' }); setEntryModal('receita') }}>+ Receita</Button>
           <Button onClick={exportarCsv}>Exportar</Button>
@@ -246,10 +308,10 @@ export default function Financeiro() {
                     <span style={{ textAlign: 'right' }}><span className="pill" style={{ background: st.bg, color: st.fg }}>{st.label}</span></span>
                     <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <Menu width={230} items={[
-                        { label: 'Marcar como pago', disabled: p.status === 'pago', onClick: () => setStatus(p.id, 'pago', `Parcela de ${p.resp} marcada como paga.`) },
+                        { label: 'Marcar como pago', disabled: p.status === 'pago', onClick: () => { setStatus(p.id, 'pago', `Parcela de ${p.resp} marcada como paga.`); pedirRecibo(p) } },
                         { label: 'Cobrar por WhatsApp', disabled: p.status === 'pago', onClick: () => cobrar(p) },
                         { label: 'Copiar PIX copia e cola', disabled: p.status === 'pago', onClick: () => copiarPix(p) },
-                        { label: 'Gerar recibo', disabled: p.status !== 'pago', onClick: () => setRecibo(p) },
+                        { label: 'Emitir recibo', disabled: p.status !== 'pago', onClick: () => pedirRecibo(p) },
                         { label: 'Reabrir', disabled: p.status !== 'pago', onClick: () => setStatus(p.id, 'aberto', 'Parcela reaberta.') },
                       ]} />
                     </span>
@@ -313,7 +375,12 @@ export default function Financeiro() {
               <span className="tnum" style={{ font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>{e.date}</span>
               <span className="tnum" style={{ font: "700 13px 'Plus Jakarta Sans'", color: e.type === 'receita' ? '#2f9a5b' : '#d64b45', textAlign: 'right' }}>{e.type === 'receita' ? '+' : '−'} {brMoney(e.value)}</span>
               <span style={{ textAlign: 'right' }}><span className="pill" style={{ background: e.status === 'pago' ? '#e7f6ee' : '#eef1f4', color: e.status === 'pago' ? '#2f9a5b' : '#3f4b57' }}>{e.status === 'pago' ? 'Pago' : 'Em aberto'}</span></span>
-              <span style={{ display: 'flex', justifyContent: 'flex-end' }}><Menu items={[{ label: 'Excluir', danger: true, onClick: () => removeEntry(e.id) }]} /></span>
+              <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Menu width={210} items={[
+                  { label: 'Emitir recibo', disabled: e.type !== 'receita', onClick: () => reciboDeEntrada(e) },
+                  { label: 'Excluir', danger: true, onClick: () => removeEntry(e.id) },
+                ]} />
+              </span>
             </div>
           ))}
         </div>
@@ -349,34 +416,43 @@ export default function Financeiro() {
         <Field label="Status"><Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as 'pago' | 'aberto' })}><option value="pago">Pago</option><option value="aberto">Em aberto</option></Select></Field>
       </Modal>
 
-      {/* Recibo imprimível */}
+      {/* Recibo: confirmação → gravação numerada → impressão */}
+      <ReciboModal open={!!draft} draft={draft} onChange={setDraft} onClose={() => setDraft(null)} onEmit={emitirRecibo} saving={emitindo} />
+
       <PrintDoc open={!!recibo} title="Recibo" onClose={() => setRecibo(null)}>
-        {recibo && (
-          <div style={{ font: "500 13px/1.8 'Plus Jakarta Sans'", color: '#1c2430' }}>
-            <div style={{ textAlign: 'center', marginBottom: 28 }}>
-              <div style={{ font: "800 18px 'Plus Jakarta Sans'" }}>{clinic.name}</div>
-              <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#5b647a' }}>
-                {clinic.cro}{clinic.cnpj ? ` · CNPJ ${clinic.cnpj}` : ''} · {clinic.address}
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '2px solid #1c2430', borderBottom: '2px solid #1c2430', padding: '10px 2px', marginBottom: 24 }}>
-              <span style={{ font: "800 16px 'Plus Jakarta Sans'", letterSpacing: 1 }}>RECIBO</span>
-              <span className="tnum" style={{ font: "800 16px 'Plus Jakarta Sans'" }}>{brMoney(parseMoney(recibo.val))}</span>
-            </div>
-            <p style={{ margin: '0 0 18px' }}>
-              Recebemos de <b>{recibo.resp}</b> a importância de <b>{brMoney(parseMoney(recibo.val))}</b>, referente a{' '}
-              <b>{recibo.ref || 'serviços odontológicos'}</b>{recibo.venc ? ` (vencimento ${recibo.venc})` : ''}, pela qual damos plena e geral quitação.
-            </p>
-            <p style={{ margin: '0 0 48px' }}>
-              {BRAND.city}, {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}.
-            </p>
-            <div style={{ width: 280, margin: '0 auto', textAlign: 'center', borderTop: '1px solid #1c2430', paddingTop: 8 }}>
-              <div style={{ font: "700 13px 'Plus Jakarta Sans'" }}>{BRAND.dentist}</div>
-              <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>{BRAND.role}</div>
-            </div>
+        {recibo && <ReciboDoc recibo={recibo} clinic={clinic} />}
+      </PrintDoc>
+
+      {/* Recibos emitidos + exportação para o Carnê-Leão */}
+      <Modal open={verRecibos} onClose={() => setVerRecibos(false)} title="Recibos emitidos" width={560}
+        subtitle={recibos.length ? `${recibos.length} recibo(s) · total ${brMoney(recibos.reduce((s, r) => s + r.value, 0))}` : 'Nenhum recibo emitido ainda'}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setVerRecibos(false)}>Fechar</Button>
+            <Button variant="outline" onClick={() => { setVerRecibos(false); setDraft({ payerName: '', payerCpf: '', description: '', value: '', issuedOn: todayISO(), origin: 'avulso' }) }}>Recibo avulso</Button>
+            <Button onClick={exportarCarneLeao} disabled={!recibos.length}>Exportar Carnê-Leão</Button>
+          </>
+        }>
+        {recibos.length === 0 && (
+          <div style={{ font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>
+            Os recibos aparecem aqui conforme forem emitidos. O CSV de exportação traz data, CPF, nome, descrição e valor —
+            o formato que o Carnê-Leão (e o script de importação) espera.
           </div>
         )}
-      </PrintDoc>
+        {recibos.map((r) => (
+          <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 0', borderBottom: '1px solid #f4f6f6' }}>
+            <span className="tnum" style={{ font: "800 12px 'Plus Jakarta Sans'", color: '#8b93a7', width: 42 }}>#{String(r.number).padStart(4, '0')}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ font: "700 13px 'Plus Jakarta Sans'", color: '#26324a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.payerName}</div>
+              <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {brDate(r.issuedOn)} · {r.payerCpf || 'sem CPF'} · {r.description || '—'}
+              </div>
+            </div>
+            <span className="tnum" style={{ font: "800 13px 'Plus Jakarta Sans'", color: '#2f9a5b' }}>{brMoney(r.value)}</span>
+            <Button size="sm" variant="ghost" onClick={() => { setVerRecibos(false); setRecibo(r) }}>Ver</Button>
+          </div>
+        ))}
+      </Modal>
     </>
   )
 }

@@ -5,6 +5,8 @@ import { Icon, type IconName } from '../icons'
 import { confirmLeave } from '../lib/leaveGuard'
 import { UserMenu } from './Chrome'
 import { Onboarding, onboardingDone } from './Onboarding'
+import TabletShell from './TabletShell'
+import { useTablet } from '../lib/useTablet'
 import { BRAND } from '../brand'
 
 const NAV: { label: string; icon: IconName; to: string }[] = [
@@ -91,6 +93,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [expanded, setExpanded] = useState(readExpanded)
   // abre sozinho no primeiro acesso; o botão Ajuda reabre quando quiser
   const [onboarding, setOnboarding] = useState(() => !onboardingDone())
+  const tablet = useTablet()
 
   const toggle = () => {
     setExpanded((v) => {
@@ -102,6 +105,16 @@ export default function Layout({ children }: { children: ReactNode }) {
       }
       return next
     })
+  }
+
+  // tablet/celular: shell estilo Apple Health (tab bar embaixo) no lugar do rail lateral
+  if (tablet) {
+    return (
+      <>
+        <TabletShell onHelp={() => setOnboarding(true)}>{children}</TabletShell>
+        <Onboarding open={onboarding} onClose={() => setOnboarding(false)} />
+      </>
+    )
   }
 
   return (

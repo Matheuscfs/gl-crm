@@ -5,7 +5,6 @@ import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
 import { Field, TextInput, Select, FieldRow } from '../components/Field'
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { EmptyState } from '../components/States'
 import { useToast } from '../components/Toast'
 import { useOutsideClick } from '../components/useOutsideClick'
 import { useStore, type EventItem, type Procedimento } from '../store'
@@ -23,6 +22,21 @@ import { STATUS, timeLabels, fmtHour, AGENDA_START, AGENDA_ROW, PERFIL, perfilTo
 const LEGEND: ApptStatus[] = ['agendado', 'confirmado', 'em_atendimento', 'concluido', 'faltou', 'desmarcado']
 const VIEWS = ['Diária', 'Semanal', 'Mensal']
 const snapHalf = (h: number) => Math.round(h * 2) / 2
+/** Último horário da grade (as etiquetas cobrem AGENDA_START … AGENDA_START + n). */
+const AGENDA_END = AGENDA_START + timeLabels.length
+
+/** Blocos de 30 min do expediente — as opções do campo "Horário". */
+function HourOptions({ range }: { range?: Range }) {
+  const slots: number[] = []
+  for (let h = AGENDA_START; h < AGENDA_END; h += 0.5) slots.push(h)
+  return (
+    <>
+      {slots.map((h) => (
+        <option key={h} value={h} disabled={!!range && (h < range.start || h >= range.end)}>{fmtHour(h)}</option>
+      ))}
+    </>
+  )
+}
 
 /**
  * Layout de conflitos: quando dois ou mais atendimentos se sobrepõem no tempo,
@@ -194,16 +208,57 @@ function DraggableEvent({ e, onOpen, onResize, lane = 0, lanes = 1, colW = 0, ra
   )
 }
 
-function DayColumn({ iso, today, range, children }: { iso: string; today?: boolean; range?: Range; children: React.ReactNode }) {
+/** Bloco de 30 min correspondente ao ponto clicado dentro da grade. */
+function slotAtPointer(e: React.MouseEvent<HTMLElement>): number {
+  const rect = e.currentTarget.getBoundingClientRect()
+  return AGENDA_START + Math.floor((e.clientY - rect.top) / HALF_ROW) / 2
+}
+
+/** Faixa pontilhada que segue o cursor mostrando onde o agendamento cairia. */
+function NewSlotGhost({ hour }: { hour: number }) {
+  return (
+    <div style={{
+      position: 'absolute', left: 4, right: 4,
+      top: (hour - AGENDA_START) * AGENDA_ROW, height: HALF_ROW - 3,
+      border: '1.5px dashed #9db4fb', borderRadius: 8, background: 'rgba(63,107,245,0.07)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+      font: "700 10.5px 'Plus Jakarta Sans'", color: '#2f52e0',
+      pointerEvents: 'none', overflow: 'hidden', whiteSpace: 'nowrap',
+    }}>
+      + {fmtHour(hour)}
+    </div>
+  )
+}
+
+function DayColumn({ iso, today, range, onCreate, children }: { iso: string; today?: boolean; range?: Range; onCreate: (iso: string, hour: number) => void; children: React.ReactNode }) {
   const closed = !range
   const { setNodeRef, isOver } = useDroppable({ id: `col-${iso}`, disabled: closed })
+  const [ghost, setGhost] = useState<number | null>(null)
+  // só reage ao fundo da coluna: sobre um evento, o alvo é o card (não a coluna)
+  const noFundo = (e: React.MouseEvent<HTMLElement>) => e.target === e.currentTarget
+  const dentroDoExpediente = (h: number) => !!range && h >= range.start && h < range.end
+  // arrastar/redimensionar um card termina em "click" na coluna (o alvo do click vira o
+  // ancestral comum): exigir que o clique tenha COMEÇADO no fundo descarta esses casos.
+  const abriuNoFundo = useRef(false)
   // fundo translúcido para que as linhas de hora (desenhadas na grade) apareçam em todas as colunas
   return (
-    <div ref={setNodeRef} style={{ position: 'relative', borderLeft: '1px solid #eff2f9', background: closed ? 'rgba(140,150,170,0.12)' : isOver ? 'rgba(63,107,245,0.10)' : today ? 'rgba(63,107,245,0.05)' : 'transparent', transition: 'background 0.15s ease' }}>
+    <div
+      ref={setNodeRef}
+      onMouseMove={(e) => {
+        if (closed || !noFundo(e)) return setGhost(null)
+        const h = slotAtPointer(e)
+        setGhost(dentroDoExpediente(h) ? h : null)
+      }}
+      onMouseLeave={() => setGhost(null)}
+      onMouseDown={(e) => { abriuNoFundo.current = noFundo(e) }}
+      onClick={(e) => { if (!abriuNoFundo.current || !noFundo(e)) return; onCreate(iso, slotAtPointer(e)) }}
+      style={{ position: 'relative', borderLeft: '1px solid #eff2f9', cursor: closed ? 'default' : 'copy', background: closed ? 'rgba(140,150,170,0.12)' : isOver ? 'rgba(63,107,245,0.10)' : today ? 'rgba(63,107,245,0.05)' : 'transparent', transition: 'background 0.15s ease' }}
+    >
       {/* fora do expediente fica sombreado (como no Google Agenda) */}
       {range && range.start > AGENDA_START && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: (range.start - AGENDA_START) * AGENDA_ROW, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
       {range && range.end < 19 && <div style={{ position: 'absolute', left: 0, right: 0, top: (range.end - AGENDA_START) * AGENDA_ROW, bottom: 0, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
       {closed && <div style={{ position: 'absolute', top: 10, left: 0, right: 0, textAlign: 'center', font: "700 10px 'Plus Jakarta Sans'", letterSpacing: '.08em', color: '#9aa4b6', pointerEvents: 'none' }}>FECHADO</div>}
+      {ghost !== null && <NewSlotGhost hour={ghost} />}
       {children}
     </div>
   )
@@ -245,7 +300,25 @@ export default function Agenda() {
   const conflictAt = (date: string, start: number, dur: number, excludeId?: string) =>
     events.find((e) => e.date === date && e.id !== excludeId && e.status !== 'desmarcado' && e.status !== 'faltou' && start < e.start + e.dur && e.start < start + dur)
 
-  const openNew = (date?: string) => { setForm(EMPTY(date ?? todayISO())); setOpen(true) }
+  const openNew = (date?: string, hour?: number) => {
+    const d = date ?? todayISO()
+    const range = dayRange(horarios, d)
+    setForm({ ...EMPTY(d), hour: String(hour ?? range?.start ?? 9) })
+    setOpen(true)
+  }
+
+  /**
+   * Clique em um espaço vazio da grade → novo agendamento já no dia e horário clicados.
+   * Dia fechado ou fora do expediente não abre: o cadastro seria recusado no salvar.
+   */
+  const createAt = (iso: string, hour: number) => {
+    const range = dayRange(horarios, iso)
+    if (!range) return toast('A clínica não atende neste dia. Ajuste em Configurações → Horários.', 'error')
+    if (hour < range.start || hour >= range.end) {
+      return toast(`Fora do expediente de ${fmtHour(range.start)} – ${fmtHour(range.end)}.`, 'error')
+    }
+    openNew(iso, hour)
+  }
 
   const submit = () => {
     if (!form.child.trim()) return toast('Informe o paciente.', 'error')
@@ -342,7 +415,7 @@ export default function Agenda() {
       {view === 'Mensal' ? (
         <MonthView anchor={weekStart} counts={byDate} onPick={(iso) => { setDayFocus(iso); setWeekStart(mondayOf(parseISO(iso))); setView('Diária') }} />
       ) : view === 'Diária' ? (
-        <DayView iso={dayFocus} cols={weekColumns(mondayOf(parseISO(dayFocus)))} events={byDate[dayFocus] ?? []} range={dayRange(horarios, dayFocus)} onPickDay={setDayFocus} onOpen={setDetail} onNew={() => openNew(dayFocus)} />
+        <DayView iso={dayFocus} cols={weekColumns(mondayOf(parseISO(dayFocus)))} events={byDate[dayFocus] ?? []} range={dayRange(horarios, dayFocus)} onPickDay={setDayFocus} onOpen={setDetail} onCreate={createAt} />
       ) : (
         <div style={{ flex: 1, overflow: 'auto', padding: '0 28px 24px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '60px repeat(6, 1fr)', position: 'sticky', top: 0, background: '#f5f8fd', zIndex: 2, paddingTop: 10 }}>
@@ -365,7 +438,7 @@ export default function Agenda() {
                 const lanes = layoutLanes(dayEvents)
                 const range = dayRange(horarios, c.iso)
                 return (
-                  <DayColumn key={c.iso} iso={c.iso} today={c.today} range={range}>
+                  <DayColumn key={c.iso} iso={c.iso} today={c.today} range={range} onCreate={createAt}>
                     {dayEvents.map((e) => <DraggableEvent key={e.id} e={e} onOpen={setDetail} onResize={(id, dur) => updateAppointment(id, { dur })} lane={lanes[e.id]?.lane} lanes={lanes[e.id]?.lanes} colW={colW} range={range} />)}
                   </DayColumn>
                 )
@@ -395,7 +468,7 @@ export default function Agenda() {
         </FieldRow>
         <FieldRow>
           <Field label="Data"><DateField value={form.date} onChange={(iso) => setForm({ ...form, date: iso })} /></Field>
-          <Field label="Horário"><Select value={form.hour} onChange={(e) => setForm({ ...form, hour: e.target.value })}>{(() => { const r = dayRange(horarios, form.date); return timeLabels.map((t, i) => { const h = AGENDA_START + i; return <option key={t} value={h} disabled={!!r && (h < r.start || h >= r.end)}>{t}</option> }) })()}</Select></Field>
+          <Field label="Horário"><Select value={form.hour} onChange={(e) => setForm({ ...form, hour: e.target.value })}><HourOptions range={dayRange(horarios, form.date)} /></Select></Field>
         </FieldRow>
         <FieldRow>
           <Field label="Duração"><Select value={form.dur} onChange={(e) => setForm({ ...form, dur: e.target.value })}><option value="0.5">30 min</option><option value="1">1 hora</option><option value="1.5">1h30</option><option value="2">2 horas</option></Select></Field>
@@ -441,7 +514,7 @@ export default function Agenda() {
             </FieldRow>
             <FieldRow>
               <Field label="Data"><DateField value={detail.date} onChange={(iso) => { moveAppointment(detail.id, iso, detail.start); setDetail({ ...detail, date: iso }) }} /></Field>
-              <Field label="Horário"><Select value={detail.start} onChange={(e) => patchDetail({ start: Number(e.target.value) })}>{(() => { const r = dayRange(horarios, detail.date); return timeLabels.map((t, i) => { const h = AGENDA_START + i; return <option key={t} value={h} disabled={!!r && (h < r.start || h >= r.end)}>{t}</option> }) })()}</Select></Field>
+              <Field label="Horário"><Select value={detail.start} onChange={(e) => patchDetail({ start: Number(e.target.value) })}><HourOptions range={dayRange(horarios, detail.date)} /></Select></Field>
             </FieldRow>
             <Field label="Duração"><Select value={String(detail.dur)} onChange={(e) => patchDetail({ dur: Number(e.target.value) })}><option value="0.5">30 min</option><option value="1">1 hora</option><option value="1.5">1h30</option><option value="2">2 horas</option></Select></Field>
           </>
@@ -455,34 +528,50 @@ export default function Agenda() {
 }
 
 /* ---------- Diária ---------- */
-function DayView({ iso, cols, events, range, onPickDay, onOpen, onNew }: { iso: string; cols: { iso: string; d: string; n: string; today: boolean }[]; events: EventItem[]; range?: Range; onPickDay: (iso: string) => void; onOpen: (e: EventItem) => void; onNew: () => void }) {
+function DayView({ iso, cols, events, range, onPickDay, onOpen, onCreate }: { iso: string; cols: { iso: string; d: string; n: string; today: boolean }[]; events: EventItem[]; range?: Range; onPickDay: (iso: string) => void; onOpen: (e: EventItem) => void; onCreate: (iso: string, hour: number) => void }) {
+  const [ghost, setGhost] = useState<number | null>(null)
+  const noFundo = (e: React.MouseEvent<HTMLElement>) => e.target === e.currentTarget
+  const dentroDoExpediente = (h: number) => !!range && h >= range.start && h < range.end
+  const abriuNoFundo = useRef(false)
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '16px 28px 24px' }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         {cols.map((c) => <button key={c.iso} className={`seg-item${c.iso === iso ? ' active' : ''}`} onClick={() => onPickDay(c.iso)} style={{ borderRadius: 10, border: '1px solid #eceff6' }}>{c.d} {c.n}</button>)}
       </div>
-      {events.length === 0 ? (
-        <div className="card"><EmptyState icon="cal" title="Nenhum atendimento neste dia" action={<Button onClick={onNew}>Novo agendamento</Button>} /></div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', border: '1px solid #eceff6', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
-          <div style={{ position: 'relative', background: '#fafbff', borderRight: '1px solid #eceff6' }}>{timeLabels.map((t) => <div key={t} style={{ height: AGENDA_ROW, font: "600 10.5px 'JetBrains Mono'", color: '#8b93a7', textAlign: 'right', paddingRight: 10, transform: 'translateY(-7px)' }}>{t}</div>)}</div>
-          <div style={{ position: 'relative', backgroundImage: 'repeating-linear-gradient(to bottom,transparent 0,transparent 63px,#eff2f9 63px,#eff2f9 64px)' }}>
-            {!range && <div style={{ position: 'absolute', inset: 0, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
-            {range && range.start > AGENDA_START && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: (range.start - AGENDA_START) * AGENDA_ROW, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
-            {range && range.end < 19 && <div style={{ position: 'absolute', left: 0, right: 0, top: (range.end - AGENDA_START) * AGENDA_ROW, bottom: 0, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
-            {(() => {
-              const lanes = layoutLanes(events)
-              return events.map((e) => {
-                const l = lanes[e.id] ?? { lane: 0, lanes: 1 }
-                const w = 100 / l.lanes
-                return (
-                  <div key={e.id} style={{ position: 'absolute', left: `calc(${l.lane * w}% + 8px)`, width: `calc(${w}% - 16px)`, top: (e.start - AGENDA_START) * AGENDA_ROW, height: e.dur * AGENDA_ROW - 6 }}><EventCard e={e} onClick={() => onOpen(e)} /></div>
-                )
-              })
-            })()}
-          </div>
+      {events.length === 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>
+          <Icon name="cal" size={15} /> Nenhum atendimento neste dia — clique em um horário para agendar.
         </div>
       )}
+      <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', border: '1px solid #eceff6', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
+        <div style={{ position: 'relative', background: '#fafbff', borderRight: '1px solid #eceff6' }}>{timeLabels.map((t) => <div key={t} style={{ height: AGENDA_ROW, font: "600 10.5px 'JetBrains Mono'", color: '#8b93a7', textAlign: 'right', paddingRight: 10, transform: 'translateY(-7px)' }}>{t}</div>)}</div>
+        <div
+          onMouseMove={(e) => {
+            if (!range || !noFundo(e)) return setGhost(null)
+            const h = slotAtPointer(e)
+            setGhost(dentroDoExpediente(h) ? h : null)
+          }}
+          onMouseLeave={() => setGhost(null)}
+          onMouseDown={(e) => { abriuNoFundo.current = noFundo(e) }}
+          onClick={(e) => { if (!abriuNoFundo.current || !noFundo(e)) return; onCreate(iso, slotAtPointer(e)) }}
+          style={{ position: 'relative', cursor: range ? 'copy' : 'default', backgroundImage: 'repeating-linear-gradient(to bottom,transparent 0,transparent 63px,#eff2f9 63px,#eff2f9 64px)' }}
+        >
+          {!range && <div style={{ position: 'absolute', inset: 0, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
+          {range && range.start > AGENDA_START && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: (range.start - AGENDA_START) * AGENDA_ROW, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
+          {range && range.end < 19 && <div style={{ position: 'absolute', left: 0, right: 0, top: (range.end - AGENDA_START) * AGENDA_ROW, bottom: 0, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
+          {ghost !== null && <NewSlotGhost hour={ghost} />}
+          {(() => {
+            const lanes = layoutLanes(events)
+            return events.map((e) => {
+              const l = lanes[e.id] ?? { lane: 0, lanes: 1 }
+              const w = 100 / l.lanes
+              return (
+                <div key={e.id} style={{ position: 'absolute', left: `calc(${l.lane * w}% + 8px)`, width: `calc(${w}% - 16px)`, top: (e.start - AGENDA_START) * AGENDA_ROW, height: e.dur * AGENDA_ROW - 6 }}><EventCard e={e} onClick={() => onOpen(e)} /></div>
+              )
+            })
+          })()}
+        </div>
+      </div>
     </div>
   )
 }
