@@ -9,6 +9,7 @@ import { brMoney, parseMoney } from '../lib/money'
 import { supabase } from '../lib/supabase'
 import { isVencidaBr } from '../lib/dates'
 import { UserMenu } from '../components/Chrome'
+import { PatientPhoto } from '../components/PatientPhoto'
 
 const WD_FULL = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado']
 const MONTHS_FULL = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
@@ -135,7 +136,7 @@ export default function Resumo() {
               <div key={e.id} className="hl-row">
                 <span className="hl-row-time tnum">{fmtHour(e.start)}</span>
                 <span className="hl-row-avatar">
-                  {pat?.photoUrl ? <img src={pat.photoUrl} alt="" /> : (pat?.initials ?? initials(e.child))}
+                  <PatientPhoto src={pat?.photoUrl} fallback={pat?.initials ?? initials(e.child)} />
                 </span>
                 <span className="hl-row-main" style={{ display: 'block' }}>
                   <span className="hl-row-name">{e.child}</span>

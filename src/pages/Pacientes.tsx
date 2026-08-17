@@ -14,6 +14,7 @@ import { exportCsv } from '../lib/exportCsv'
 import { TREAT_STATUS, PERFIL, ORIGENS, idadeLabel, type TreatStatus, type Patient, type Perfil } from '../data'
 import { DateField } from '../components/DateField'
 import { maskCpf, validCpf, maskPhone, validPhone } from '../lib/masks'
+import { PatientPhoto } from '../components/PatientPhoto'
 
 const GRID = '2.4fr 0.7fr 1.5fr 1fr 1.1fr 0.85fr 1.1fr'
 const AGE_OPTS = ['Todas as idades', '0–3 anos', '4–6 anos', '7–9 anos', '10+ anos']
@@ -177,7 +178,7 @@ export default function Pacientes() {
               <div key={p.name} className="table-row clickable" style={{ gridTemplateColumns: GRID }} onClick={() => navigate(`/pacientes/${encodeURIComponent(p.name)}/odontograma`)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
                   <div className="avatar" style={{ width: 36, height: 36, overflow: 'hidden' }}>
-                    {p.photoUrl ? <img src={p.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : p.initials}
+                    <PatientPhoto src={p.photoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} fallback={p.initials} />
                   </div>
                   <span style={{ font: "700 13px 'Plus Jakarta Sans'", color: '#26324a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
                   <span className="pill" style={{ flex: 'none', padding: '2px 8px', background: PERFIL[p.perfil ?? 'pediatrico'].bg, color: PERFIL[p.perfil ?? 'pediatrico'].fg }}>{PERFIL[p.perfil ?? 'pediatrico'].short}</span>

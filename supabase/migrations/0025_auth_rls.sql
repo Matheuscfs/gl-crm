@@ -35,11 +35,26 @@ begin
   end loop;
 end $$;
 
+-- ---------- Defesa em profundidade ----------
+-- Só a RLS não basta: uma tabela criada depois (numa migração futura) nasceria
+-- SEM row level security e, com os grants padrão do Supabase, o `anon` leria
+-- tudo dela. Tirando os privilégios do papel `anon` no schema, esquecer uma
+-- policy deixa de virar vazamento — nada aqui é acessível sem login.
+-- (As rotas de autenticação não dependem destes grants: o login continua normal.)
+revoke all on all tables in schema public from anon;
+revoke all on all sequences in schema public from anon;
+revoke all on all functions in schema public from anon;
+alter default privileges in schema public revoke all on tables from anon;
+alter default privileges in schema public revoke all on sequences from anon;
+alter default privileges in schema public revoke all on functions from anon;
+
 -- ---------- Storage (fotos dos pacientes) ----------
--- Gravar, alterar e apagar objetos passa a exigir login. A leitura continua pública
--- porque o bucket `patient-photos` é público e as URLs já gravadas em
--- patients.photo_url / patient_photos.url dependem disso — para fechar de vez é
--- preciso tornar o bucket privado e migrar o app para URLs assinadas.
+-- O bucket era público E o `anon` tinha select em storage.objects: dava para
+-- LISTAR o bucket pela API e baixar todas as fotos clínicas sem login.
+-- Agora o bucket é privado e só autenticado enxerga os objetos — o app passa a
+-- exibir as fotos por URL assinada de 1 hora (src/lib/photos.ts).
+update storage.buckets set public = false where id = 'patient-photos';
+
 do $$
 begin
   drop policy if exists "pp_read" on storage.objects;
@@ -48,7 +63,7 @@ begin
   drop policy if exists "pp_delete" on storage.objects;
 
   create policy "pp_read" on storage.objects
-    for select to anon, authenticated using (bucket_id = 'patient-photos');
+    for select to authenticated using (bucket_id = 'patient-photos');
   create policy "pp_write" on storage.objects
     for insert to authenticated with check (bucket_id = 'patient-photos');
   create policy "pp_update" on storage.objects

@@ -18,6 +18,7 @@ import { fmtDur, fmtMoney } from '../lib/fmt'
 import { DateField } from '../components/DateField'
 import { Butterfly } from './documents/DocKit'
 import { STATUS, timeLabels, fmtHour, AGENDA_START, AGENDA_ROW, PERFIL, perfilToKind, type ApptStatus, type ApptKind, type Patient } from '../data'
+import { PatientPhoto } from '../components/PatientPhoto'
 
 const LEGEND: ApptStatus[] = ['agendado', 'confirmado', 'em_atendimento', 'concluido', 'faltou', 'desmarcado']
 const VIEWS = ['Diária', 'Semanal', 'Mensal']
@@ -151,7 +152,7 @@ function EventCard({ e, onClick, dragging, displayStart }: { e: EventItem; onCli
   return (
     <div onClick={onClick} style={{ height: '100%', display: 'flex', gap: 7, alignItems: 'flex-start', background: st.bg, border: `1px solid ${st.border}`, borderLeft: `3px solid ${st.dot}`, borderRadius: 9, padding: '6px 9px', overflow: 'hidden', cursor: dragging ? 'grabbing' : 'pointer', boxShadow: dragging ? '0 14px 28px -10px rgba(38,60,110,.55)' : '0 1px 2px rgba(15,40,45,.05)' }}>
       {/* foto à esquerda, ocupando a altura das linhas de texto */}
-      {photo && <img src={photo} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flex: 'none', marginTop: 2, boxShadow: '0 0 0 1.5px #fff' }} />}
+      {photo && <PatientPhoto src={photo} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flex: 'none', marginTop: 2, boxShadow: '0 0 0 1.5px #fff' }} />}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span className="tnum" style={dragging
