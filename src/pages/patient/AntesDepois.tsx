@@ -10,6 +10,7 @@ import { uploadToDrive } from '../../lib/googleDrive'
 import { useStore } from '../../store'
 import { isSeedPatient } from '../../data'
 import { SimulationEditor } from './SimulationEditor'
+import { PatientPhoto } from '../../components/PatientPhoto'
 
 type Slot = 'before' | 'after'
 type PhotoMap = Record<string, { before?: string; after?: string }>
@@ -157,9 +158,12 @@ export default function AntesDepois() {
   const simFilter = showSim ? `blur(${(simAvg / 100) * 0.7}px) brightness(${1 + (simAvg / 100) * 0.05}) contrast(${1 - (simAvg / 100) * 0.05})` : 'none'
 
   const Photo = ({ src, label }: { src: string | null; label: string }) => (
-    <>
-      {src ? <img src={src} alt={label} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /> : <FacePlaceholder label={label} />}
-    </>
+    <PatientPhoto
+      src={src ?? undefined}
+      alt={label}
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+      fallback={<FacePlaceholder label={label} />}
+    />
   )
 
   return (

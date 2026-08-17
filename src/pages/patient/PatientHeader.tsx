@@ -8,6 +8,7 @@ import { uploadAvatar } from '../../lib/storage'
 import { useStore } from '../../store'
 import { useToast } from '../../components/Toast'
 import { AvatarCropper } from '../../components/AvatarCropper'
+import { PatientPhoto } from '../../components/PatientPhoto'
 
 const PED_ALERTS = ['Alergia a penicilina', 'Asma — broncodilatador (salbutamol)', 'Comportamento: Frankl 3 (positivo)', 'Sucção digital']
 const EST_ALERTS = ['Sem gestação (procedimento injetável)', 'Sem alergias relatadas', 'Uso prévio de toxina botulínica']
@@ -65,9 +66,7 @@ export default function PatientHeader({
           onClick={() => fileRef.current?.click()}
           title="Alterar foto do paciente"
           style={{ width: 72, height: 72, borderRadius: '50%', flex: 'none', border: 'none', cursor: 'pointer', overflow: 'hidden', padding: 0, background: avatarBg, color: avatarFg, display: 'flex', alignItems: 'center', justifyContent: 'center', font: "800 24px 'Plus Jakarta Sans'", boxShadow: `0 0 0 3px #fff, 0 0 0 4px ${est ? '#fdeaf3' : '#e9eeff'}` }}>
-          {patient.photoUrl
-            ? <img src={patient.photoUrl} alt={patient.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : patient.initials}
+          <PatientPhoto src={patient.photoUrl} alt={patient.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} fallback={patient.initials} />
         </button>
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) escolherFoto(f); e.target.value = '' }} />
         <AvatarCropper file={cropFile} onCancel={() => setCropFile(null)} onSave={salvarFoto} />

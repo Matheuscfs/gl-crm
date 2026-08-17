@@ -2,7 +2,13 @@ import { supabase } from './supabase'
 
 export const PHOTO_BUCKET = 'patient-photos'
 
-/** Envia uma foto ao Storage e devolve a URL pública (ou null se indisponível). */
+/**
+ * O bucket é privado: o que fica gravado no banco é o CAMINHO do objeto, e a
+ * exibição pede uma URL assinada (ver `lib/photos.ts`). Guardar URL pública
+ * deixaria a foto acessível a quem não está autenticado.
+ */
+
+/** Envia uma foto ao Storage e devolve o caminho do objeto (ou null se indisponível). */
 export async function uploadPatientPhoto(
   patientId: string,
   angle: string,
@@ -18,10 +24,10 @@ export async function uploadPatientPhoto(
     console.error('[supabase] upload', error.message)
     return null
   }
-  return supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl
+  return path
 }
 
-/** Envia a foto de perfil do paciente e devolve a URL pública (ou null se indisponível). */
+/** Envia a foto de perfil do paciente e devolve o caminho do objeto (ou null se indisponível). */
 export async function uploadAvatar(patientId: string, file: File): Promise<string | null> {
   if (!supabase) return null
   const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
@@ -31,5 +37,5 @@ export async function uploadAvatar(patientId: string, file: File): Promise<strin
     console.error('[supabase] upload avatar', error.message)
     return null
   }
-  return supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl
+  return path
 }

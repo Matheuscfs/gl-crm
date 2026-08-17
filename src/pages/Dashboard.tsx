@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { StatCard, Pill, WaButton } from '../components/ui'
+import { PatientPhoto } from '../components/PatientPhoto'
 import { NotificationsBell, GlobalSearch } from '../components/Chrome'
 import { useToast } from '../components/Toast'
 import { useStore, initials } from '../store'
@@ -110,7 +111,7 @@ export default function Dashboard() {
                     <div className="tnum" style={{ width: 48, font: "700 13px 'Plus Jakarta Sans'", color: '#1a2426' }}>{a.time}</div>
                     <div style={{ width: 3, height: 38, borderRadius: 2, background: st.dot }} />
                     <div style={{ width: 34, height: 34, borderRadius: '50%', flex: 'none', overflow: 'hidden', background: '#e9eeff', color: '#2f52e0', display: 'flex', alignItems: 'center', justifyContent: 'center', font: "800 12px 'Plus Jakarta Sans'" }}>
-                      {pat?.photoUrl ? <img src={pat.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (pat?.initials ?? initials(a.child))}
+                      <PatientPhoto src={pat?.photoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} fallback={pat?.initials ?? initials(a.child)} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ font: "700 13.5px 'Plus Jakarta Sans'", color: '#1a2426' }}>
