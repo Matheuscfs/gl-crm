@@ -17,7 +17,7 @@ import { useGoogle } from '../../lib/GoogleProvider'
 import { uploadToDrive } from '../../lib/googleDrive'
 import { useAnamnese } from '../../lib/useAnamnese'
 import { supabase } from '../../lib/supabase'
-import { brToIso } from '../../lib/dates'
+import { brToIso, brDate, todayISO } from '../../lib/dates'
 
 interface Doc {
   id: string
@@ -54,7 +54,7 @@ export default function Documentos() {
   const anexar = () => {
     const nome = form.name.trim() || file?.name
     if (!nome) return toast('Informe o nome ou escolha um arquivo.', 'error')
-    add({ name: nome, kind: form.kind, date: '17/07/2026' })
+    add({ name: nome, kind: form.kind, date: brDate(todayISO()) })
     if (file && google.connected) {
       uploadToDrive(current?.name ?? 'Paciente', file, nome).then((r) => { if (r) toast('Documento enviado ao Google Drive.', 'info') })
     }

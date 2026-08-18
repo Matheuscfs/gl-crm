@@ -6,18 +6,22 @@ import { Menu } from '../../components/Menu'
 import { useToast } from '../../components/Toast'
 import { useCollection, usePatientId } from '../../lib/useCollection'
 import { SuggestInput } from '../../components/SuggestInput'
+import { DateField } from '../../components/DateField'
 import { supabase } from '../../lib/supabase'
 import { useStore } from '../../store'
 import { PrintDoc } from '../../components/PrintDoc'
+import { brDate, addMonths, primeiroVencimento } from '../../lib/dates'
+import { parseMoney, brMoney, dividirParcelas } from '../../lib/money'
+import { waLink, contactPhone, contactName } from '../../lib/whats'
 import { planoItens, planoEstetico, isSeedPatient, type Perfil } from '../../data'
 
 const GRID = '0.7fr 0.7fr 3fr 1.1fr 34px'
 const GRID_EST = '1.2fr 2.4fr 0.8fr 1.1fr 34px'
+/** Desconto do pagamento à vista no Pix (mesma regra do orçamento impresso). */
+const DESC_AVISTA = 0.05
+const PARCELAS = [3, 2, 1]
 
 interface Item { id: string; dente: string; face: string; regiao: string; proc: string; qtd: string; val: number }
-
-const parseMoney = (s: string) => Number(String(s).replace(/[^\d,]/g, '').replace(',', '.')) || 0
-const brMoney = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const seedPed: Item[] = planoItens.map((r, i) => ({ id: `seed-p${i}`, dente: r.dente, face: r.face, regiao: '', proc: r.proc, qtd: '', val: parseMoney(r.val) }))
 const seedEst: Item[] = planoEstetico.map((r, i) => ({ id: `seed-e${i}`, dente: '', face: '', regiao: r.regiao, proc: r.proc, qtd: r.qtd, val: parseMoney(r.val) }))
@@ -37,7 +41,8 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
   )
   const [approved, setApproved] = useState(false)
   const [discount, setDiscount] = useState(isSeedPatient(patient?.name) ? (est ? 150 : 40) : 0)
-  const [sending, setSending] = useState(false)
+  const [parcelas, setParcelas] = useState(3)
+  const [venc1, setVenc1] = useState(() => primeiroVencimento())
   const [printing, setPrinting] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [form, setForm] = useState({ dente: '', face: '', regiao: '', proc: '', qtd: '', val: '' })
@@ -64,19 +69,35 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
   const subtotal = items.reduce((s, it) => s + it.val, 0)
   const total = Math.max(0, subtotal - discount)
 
+  /** Total cobrado na condição escolhida — à vista no Pix leva o desconto. */
+  const totalEm = (n: number) => (n === 1 ? Math.round(total * (1 - DESC_AVISTA) * 100) / 100 : total)
+  const valores = dividirParcelas(totalEm(parcelas), parcelas)
+
   const aprovar = () => {
+    // o DateField devolve '' quando o campo é apagado — sem data não dá para gerar carnê
+    if (!venc1) return toast('Informe a data do vencimento.', 'error')
     setApproved(true)
     savePlan({ status: 'aprovado' })
     // gera as parcelas no financeiro (Fase 5 → 6)
+    const gerou = Boolean(supabase && patientId && total > 0)
     if (supabase && patientId && total > 0) {
-      const n = 3
-      const parcela = total / n
+      const n = parcelas
       const nome = patient?.name ?? 'Paciente'
       const resp = patient?.resp && patient.resp !== '—' ? patient.resp : nome
-      const rows = Array.from({ length: n }, (_, i) => ({ patient_id: patientId, resp, ref: `${nome} · Plano (${i + 1}/${n})`, venc: `05/${String(8 + i).padStart(2, '0')}/2026`, val: brMoney(parcela), status: 'aberto' }))
+      const rows = valores.map((val, i) => ({
+        patient_id: patientId,
+        resp,
+        ref: n === 1 ? `${nome} · Plano (à vista)` : `${nome} · Plano (${i + 1}/${n})`,
+        venc: brDate(addMonths(venc1, i)),
+        val: brMoney(val),
+        status: 'aberto',
+      }))
       supabase.from('installments').insert(rows).then(({ error }) => { if (error) console.error('[supabase] installments', error.message) })
     }
-    toast('Plano aprovado — parcelas geradas.')
+    if (!gerou) return toast('Plano aprovado.')
+    toast(parcelas === 1
+      ? `Plano aprovado — cobrança de ${brMoney(valores[0])} para ${brDate(venc1)}.`
+      : `Plano aprovado — ${parcelas} parcelas geradas a partir de ${brDate(venc1)}.`)
   }
 
   // opções do seletor: tabela de preços (Ficha de Procedimento); escolher preenche o valor
@@ -95,7 +116,32 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
     toast('Item adicionado ao plano.')
   }
 
-  const sendWhats = () => { setSending(true); setTimeout(() => { setSending(false); toast('Orçamento enviado por WhatsApp.') }, 700) }
+  /** Resumo do orçamento no corpo da mensagem (itens longos demais viram "+N itens"). */
+  const orcamentoMsg = () => {
+    const MAX = 12
+    const linhas = items.slice(0, MAX).map((it) => `• ${it.proc}${est ? (it.qtd && it.qtd !== '—' ? ` (${it.qtd})` : '') : (it.dente && it.dente !== '—' ? ` — dente ${it.dente}` : '')} — ${brMoney(it.val)}`)
+    if (items.length > MAX) linhas.push(`• …e mais ${items.length - MAX} ${items.length - MAX === 1 ? 'item' : 'itens'}`)
+    const avista = totalEm(1)
+    const tresX = dividirParcelas(total, 3)[0]
+    return [
+      `Oi, ${contactName(patient, '')}! 😊 Segue o orçamento do tratamento de ${patient?.name ?? ''}:`,
+      '',
+      ...linhas,
+      '',
+      ...(discount > 0 ? [`Desconto: − ${brMoney(discount)}`] : []),
+      `*Total: ${brMoney(total)}*`,
+      '',
+      `Formas de pagamento: à vista no Pix por ${brMoney(avista)} (5% de desconto) ou em até 3x de ${brMoney(tresX)} sem juros.`,
+      'Orçamento válido por 30 dias. Qualquer dúvida é só chamar! 🦷',
+    ].join('\n')
+  }
+
+  const sendWhats = () => {
+    if (items.length === 0) return toast('Adicione itens ao plano antes de enviar.', 'error')
+    const link = waLink(contactPhone(patient), orcamentoMsg())
+    if (!link) return toast('Sem telefone no cadastro deste paciente.', 'error')
+    window.open(link, '_blank', 'noopener')
+  }
   const genPdf = () => setPrinting(true)
 
   return (
@@ -159,7 +205,7 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div className="card card-hover" style={{ padding: '16px 18px' }}>
           <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 10 }}>Aprovação do responsável</div>
-          <Button variant="whats" block loading={sending} onClick={sendWhats} style={{ marginBottom: 8 }}>Enviar por WhatsApp</Button>
+          <Button variant="whats" block onClick={sendWhats} style={{ marginBottom: 8 }}>Enviar por WhatsApp</Button>
           <Button variant="teal-soft" block disabled={approved} onClick={aprovar}>
             {approved ? 'Plano aprovado ✓' : 'Marcar como aprovado'}
           </Button>
@@ -168,12 +214,27 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
         <div className="card card-hover" style={{ padding: '16px 18px' }}>
           <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 10 }}>Parcelamento</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[3, 2, 1].map((n) => (
-              <div key={n} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 13px', border: '1px solid #e5e9f2', borderRadius: 11 }}>
-                <span style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{n === 1 ? 'À vista (Pix)' : `${n}x sem juros`}</span>
-                <span className="tnum" style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#2f52e0' }}>{brMoney((n === 1 ? total * 0.95 : total) / n)}</span>
+            {PARCELAS.map((n) => {
+              const sel = n === parcelas
+              return (
+                <button key={n} onClick={() => setParcelas(n)} disabled={approved}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 13px', textAlign: 'left', borderRadius: 11, cursor: approved ? 'default' : 'pointer', border: `1.5px solid ${sel ? '#3f6bf5' : '#e5e9f2'}`, background: sel ? '#f5f8ff' : '#fff', opacity: approved && !sel ? 0.5 : 1 }}>
+                  <span style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{n === 1 ? 'À vista (Pix)' : `${n}x sem juros`}</span>
+                  <span className="tnum" style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: sel ? '#2f52e0' : '#8b93a7' }}>{brMoney(dividirParcelas(totalEm(n), n)[0])}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ font: "700 11px 'Plus Jakarta Sans'", color: '#8b93a7', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              {parcelas === 1 ? 'Vencimento' : '1º vencimento'}
+            </div>
+            <DateField value={venc1} onChange={setVenc1} />
+            {parcelas > 1 && venc1 && (
+              <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7', marginTop: 6 }}>
+                Demais parcelas todo dia {Number(venc1.slice(8, 10))}, até {brDate(addMonths(venc1, parcelas - 1))}.
               </div>
-            ))}
+            )}
           </div>
         </div>
 
@@ -205,7 +266,7 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', marginTop: 4, borderTop: '1.5px solid #2b2b2b', fontWeight: 800, fontSize: 14 }}><span>Total</span><span>{brMoney(total)}</span></div>
         </div>
         <div style={{ marginTop: 18, fontSize: 11.5, color: '#555' }}>
-          Formas de pagamento: à vista no Pix com 5% de desconto ({brMoney(total * 0.95)}), ou em até 3x sem juros de {brMoney(total / 3)}.
+          Formas de pagamento: à vista no Pix com 5% de desconto ({brMoney(totalEm(1))}), ou em até 3x sem juros de {brMoney(dividirParcelas(total, 3)[0])}.
           Orçamento válido por 30 dias. Valores sujeitos a reavaliação clínica.
         </div>
       </PrintDoc>

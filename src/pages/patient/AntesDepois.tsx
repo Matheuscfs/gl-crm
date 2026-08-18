@@ -9,6 +9,7 @@ import { useGoogle } from '../../lib/GoogleProvider'
 import { uploadToDrive } from '../../lib/googleDrive'
 import { useStore } from '../../store'
 import { isSeedPatient } from '../../data'
+import { brDate, todayISO } from '../../lib/dates'
 import { SimulationEditor } from './SimulationEditor'
 import { PatientPhoto } from '../../components/PatientPhoto'
 
@@ -235,7 +236,7 @@ export default function AntesDepois() {
                 <div style={{ font: "600 10px 'Plus Jakarta Sans'", color: '#8b93a7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</div>
               </button>
             ))}
-            <button className="card-hover" onClick={() => { const id = `s${sessions.length + 1}`; setSessions((p) => [...p, { id, date: '17/07/2026', label: 'Nova sessão' }]); setActiveSession(id); toast('Sessão criada.') }} style={{ flex: 'none', width: 130, borderRadius: 12, border: '1.5px dashed #cdd8ff', background: '#f5f8ff', color: '#2f52e0', font: "700 12px 'Plus Jakarta Sans'", cursor: 'pointer' }}>+ Nova sessão</button>
+            <button className="card-hover" onClick={() => { const id = `s${sessions.length + 1}`; setSessions((p) => [...p, { id, date: brDate(todayISO()), label: 'Nova sessão' }]); setActiveSession(id); toast('Sessão criada.') }} style={{ flex: 'none', width: 130, borderRadius: 12, border: '1.5px dashed #cdd8ff', background: '#f5f8ff', color: '#2f52e0', font: "700 12px 'Plus Jakarta Sans'", cursor: 'pointer' }}>+ Nova sessão</button>
           </div>
         </div>
       </div>
