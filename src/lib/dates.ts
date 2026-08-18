@@ -17,6 +17,18 @@ export function addDays(iso: string, n: number): string {
   return isoDate(d)
 }
 
+/**
+ * Soma `n` meses limitando o dia ao último do mês de destino — 31/01 + 1 mês vira
+ * 28/02, não 03/03 (o `setMonth` do JS transborda e estragaria o carnê).
+ */
+export function addMonths(iso: string, n: number): string {
+  const d = parseISO(iso)
+  const alvo = new Date(d.getFullYear(), d.getMonth() + n, 1)
+  const ultimoDia = new Date(alvo.getFullYear(), alvo.getMonth() + 1, 0).getDate()
+  alvo.setDate(Math.min(d.getDate(), ultimoDia))
+  return isoDate(alvo)
+}
+
 /** Segunda-feira da semana que contém `d`. */
 export function mondayOf(d: Date): string {
   const day = d.getDay() // 0=Dom .. 6=Sáb
@@ -65,6 +77,12 @@ export function brDate(iso: string): string {
 export function brToIso(s: string): string {
   const m = /(\d{2})\/(\d{2})\/(\d{4})/.exec(s || '')
   return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
+}
+
+/** Vencimento padrão da 1ª parcela: dia 5 do mês seguinte. */
+export function primeiroVencimento(fromISO: string = todayISO()): string {
+  const d = parseISO(fromISO)
+  return isoDate(new Date(d.getFullYear(), d.getMonth() + 1, 5))
 }
 
 /** Vencimento em "dd/mm/aaaa" já passou? (o status "vencida" é derivado, nunca gravado) */
