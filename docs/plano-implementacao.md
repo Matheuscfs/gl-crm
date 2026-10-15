@@ -51,8 +51,12 @@ Todas as telas existem e o typecheck passa limpo. O que falta é de três tipos:
       definer`, políticas `true`, `user_metadata`, buckets e grants) sobre 0001–0027 no Postgres de
       teste: 2 avisos, corrigidos na `0028_ajustes_seguranca.sql` (sem achados depois dela; auditoria
       e bloqueio de exclusão conferidos com usuário comum da equipe).
-- [ ] SQL Editor: rodar a `0028_ajustes_seguranca.sql` (3 linhas, pode repetir) e, se quiser, o
-      Security Advisor do painel para confirmar — a sessão do painel no navegador embutido expirou.
+- [x] `0028_ajustes_seguranca.sql` aplicada em produção (com autorização do usuário, pelo SQL Editor):
+      as duas funções de gatilho com `search_path=public` e sem EXECUTE para anon/authenticated.
+- [x] Security Advisor do painel, rodado de novo depois da 0028: **0 erros**, 7 avisos esperados — todos
+      "SECURITY DEFINER executável" em funções que precisam ser chamadas: `horarios_livres` e
+      `solicitar_agendamento` (agendamento online, sem login), `is_equipe`/`is_admin` (usadas pelo RLS em
+      cada consulta) e `minha_situacao` (chamada no login). Tirar o acesso quebraria o app.
 - [ ] (Opcional, decisão sua — depende das contas na Meta e no Asaas) publicar as Edge Functions, cadastrar os segredos (Meta, Asaas,
       `CRON_SECRET`) e rodar `supabase/automacao/agendar_cron.sql` — guia em `supabase/functions/README.md`.
 
