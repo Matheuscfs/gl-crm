@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Field, TextInput, FieldRow } from '../../components/Field'
-import { Menu } from '../../components/Menu'
 import { useToast } from '../../components/Toast'
 import { useCollection, usePatientId } from '../../lib/useCollection'
 import { SuggestInput } from '../../components/SuggestInput'
@@ -10,28 +11,32 @@ import { DateField } from '../../components/DateField'
 import { supabase } from '../../lib/supabase'
 import { useStore } from '../../store'
 import { PrintDoc } from '../../components/PrintDoc'
+import { Icon } from '../../icons'
 import { brDate, addMonths, primeiroVencimento } from '../../lib/dates'
 import { parseMoney, brMoney, dividirParcelas } from '../../lib/money'
 import { waLink, contactPhone, contactName } from '../../lib/whats'
 import { planoItens, planoEstetico, isSeedPatient, type Perfil } from '../../data'
 
-const GRID = '0.7fr 0.7fr 3fr 1.1fr 34px'
-const GRID_EST = '1.2fr 2.4fr 0.8fr 1.1fr 34px'
 /** Desconto do pagamento à vista no Pix (mesma regra do orçamento impresso). */
 const DESC_AVISTA = 0.05
-const PARCELAS = [3, 2, 1]
+const PARCELAS = [1, 2, 3]
 
 interface Item { id: string; dente: string; face: string; regiao: string; proc: string; qtd: string; val: number }
 
 const seedPed: Item[] = planoItens.map((r, i) => ({ id: `seed-p${i}`, dente: r.dente, face: r.face, regiao: '', proc: r.proc, qtd: '', val: parseMoney(r.val) }))
 const seedEst: Item[] = planoEstetico.map((r, i) => ({ id: `seed-e${i}`, dente: '', face: '', regiao: r.regiao, proc: r.proc, qtd: r.qtd, val: parseMoney(r.val) }))
 
+const fmtValor = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 export default function Planos({ perfil }: { perfil?: Perfil }) {
   const est = perfil === 'estetico'
   const { toast } = useToast()
   const patientId = usePatientId()
+  const { id: idRota } = useParams()
   const { patients, procedimentos } = useStore()
-  const patient = patients.find((p) => (p as { _id?: string })._id === patientId)
+  // pelo id quando há banco; pelo nome da rota no modo demonstração (sem _id o PDF saía sem nome)
+  const nomeRota = idRota ? decodeURIComponent(idRota) : ''
+  const patient = patients.find((p) => (p as { _id?: string })._id === patientId && patientId) ?? patients.find((p) => p.name === nomeRota)
   const { rows: items, add, remove } = useCollection<Item>(
     'plan_items',
     patientId,
@@ -41,10 +46,14 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
   )
   const [approved, setApproved] = useState(false)
   const [discount, setDiscount] = useState(isSeedPatient(patient?.name) ? (est ? 150 : 40) : 0)
+  // o campo guarda o texto digitado; o desconto só vale (e só grava) ao sair do campo
+  const [discountTxt, setDiscountTxt] = useState(() => fmtValor(isSeedPatient(patient?.name) ? (est ? 150 : 40) : 0))
   const [parcelas, setParcelas] = useState(3)
   const [venc1, setVenc1] = useState(() => primeiroVencimento())
   const [printing, setPrinting] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
+  const [confirmAprovar, setConfirmAprovar] = useState(false)
+  const [removendo, setRemovendo] = useState<Item | null>(null)
   const [form, setForm] = useState({ dente: '', face: '', regiao: '', proc: '', qtd: '', val: '' })
 
   // status/desconto do plano (persistido em plans)
@@ -54,7 +63,7 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
     supabase.from('plans').select('status,discount').eq('patient_id', patientId).maybeSingle().then(({ data, error }) => {
       if (cancelled || error || !data) return
       setApproved(data.status === 'aprovado')
-      if (typeof data.discount === 'number') setDiscount(data.discount)
+      if (typeof data.discount === 'number') { setDiscount(data.discount); setDiscountTxt(fmtValor(data.discount)) }
     })
     return () => { cancelled = true }
   }, [patientId])
@@ -62,20 +71,35 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
   const savePlan = (patch: { status?: string; discount?: number }) => {
     if (supabase && patientId) {
       supabase.from('plans').upsert({ patient_id: patientId, status: patch.status ?? (approved ? 'aprovado' : 'aguardando'), discount: patch.discount ?? discount }, { onConflict: 'patient_id' })
-        .then(({ error }) => { if (error) console.error('[supabase] plans', error.message) })
+        .then(({ error }) => { if (error) toast('Não foi possível salvar o plano. Verifique a conexão.', 'error') })
     }
   }
 
   const subtotal = items.reduce((s, it) => s + it.val, 0)
   const total = Math.max(0, subtotal - discount)
 
+  /** Desconto entre R$ 0,00 e o subtotal; grava uma vez, ao sair do campo. */
+  const confirmarDesconto = () => {
+    const bruto = parseMoney(discountTxt)
+    const v = Math.min(Math.max(0, bruto), subtotal)
+    if (bruto < 0) toast('O desconto não pode ser negativo.', 'error')
+    else if (bruto > subtotal) toast('O desconto foi limitado ao subtotal.', 'info')
+    setDiscountTxt(fmtValor(v))
+    if (v !== discount) { setDiscount(v); savePlan({ discount: v }) }
+  }
+
   /** Total cobrado na condição escolhida — à vista no Pix leva o desconto. */
   const totalEm = (n: number) => (n === 1 ? Math.round(total * (1 - DESC_AVISTA) * 100) / 100 : total)
   const valores = dividirParcelas(totalEm(parcelas), parcelas)
 
-  const aprovar = () => {
+  const pedirAprovacao = () => {
+    if (items.length === 0) return toast('Adicione itens ao plano antes de aprovar.', 'error')
     // o DateField devolve '' quando o campo é apagado — sem data não dá para gerar carnê
     if (!venc1) return toast('Informe a data do vencimento.', 'error')
+    setConfirmAprovar(true)
+  }
+
+  const aprovar = () => {
     setApproved(true)
     savePlan({ status: 'aprovado' })
     // gera as parcelas no financeiro (Fase 5 → 6)
@@ -92,7 +116,7 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
         val: brMoney(val),
         status: 'aberto',
       }))
-      supabase.from('installments').insert(rows).then(({ error }) => { if (error) console.error('[supabase] installments', error.message) })
+      supabase.from('installments').insert(rows).then(({ error }) => { if (error) toast('O plano foi aprovado, mas as parcelas não foram geradas. Confira no Financeiro.', 'error') })
     }
     if (!gerou) return toast('Plano aprovado.')
     toast(parcelas === 1
@@ -109,6 +133,7 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
 
   const addItem = () => {
     if (!form.proc.trim()) return toast('Informe o procedimento.', 'error')
+    if (parseMoney(form.val) < 0) return toast('O valor não pode ser negativo.', 'error')
     if (est) add({ dente: '', face: '', regiao: form.regiao || '—', proc: form.proc, qtd: form.qtd || '—', val: parseMoney(form.val) })
     else add({ dente: form.dente || '—', face: form.face || '—', regiao: '', proc: form.proc, qtd: '', val: parseMoney(form.val) })
     setForm({ dente: '', face: '', regiao: '', proc: '', qtd: '', val: '' })
@@ -142,103 +167,124 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
     if (!link) return toast('Sem telefone no cadastro deste paciente.', 'error')
     window.open(link, '_blank', 'noopener')
   }
-  const genPdf = () => setPrinting(true)
+
+  const rotuloParcela = (n: number) => (n === 1 ? 'À vista no PIX' : `${n} parcelas`)
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '22px 28px', display: 'grid', gridTemplateColumns: '1fr 320px', gap: 22, alignContent: 'start' }}>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <span style={{ font: "800 16px 'Plus Jakarta Sans'", color: '#26324a' }}>Plano de tratamento</span>
-            <span style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>{items.length} itens</span>
+    <div className="tab-body">
+      <div className="home-cols">
+        <section className="panel flush home-main" aria-labelledby="plano-titulo">
+          <div className="panel-head">
+            <div>
+              <h2 id="plano-titulo" className="panel-title">
+                Plano de tratamento
+                <span className={`tag ${approved ? 'tag-ok' : 'tag-warn'}`} style={{ minWidth: 0, padding: '3px 9px', borderRadius: 999 }}>{approved ? 'Aprovado' : 'Aguardando aprovação'}</span>
+              </h2>
+              <p className="panel-sub">{items.length} {items.length === 1 ? 'item' : 'itens'}{approved ? ' · itens travados após a aprovação' : ''}</p>
+            </div>
+            {!approved && <button className="btn-soft" onClick={() => setAddOpen(true)}>+ Adicionar {est ? 'região' : 'procedimento'}</button>}
           </div>
-          <span style={{ padding: '5px 12px', borderRadius: 20, font: "700 11.5px 'Plus Jakarta Sans'", ...(approved ? { background: '#e7f5ec', color: '#127436' } : { background: '#fdf1e2', color: '#9a5a06' }) }}>
-            {approved ? 'Aprovado' : 'Aguardando aprovação'}
-          </span>
-        </div>
 
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div className="table-head" style={{ gridTemplateColumns: est ? GRID_EST : GRID }}>
-            {est ? <><span>REGIÃO FACIAL</span><span>PROCEDIMENTO</span><span style={{ textAlign: 'right' }}>UNID./QTD</span></> : <><span>DENTE</span><span>FACE</span><span>PROCEDIMENTO</span></>}
-            <span style={{ textAlign: 'right' }}>VALOR</span><span />
+          <div className="qtable">
+            <div style={{ minWidth: 480 }} role="table" aria-label="Itens do plano">
+              <div className={`plan-row head${est ? ' est' : ''}`} role="row">
+                {est
+                  ? <><span role="columnheader">Região</span><span role="columnheader">Procedimento</span><span role="columnheader" className="num">Qtd.</span></>
+                  : <><span role="columnheader">Dente · face</span><span role="columnheader">Procedimento</span></>}
+                <span role="columnheader" className="num">Valor</span><span role="columnheader"><span className="visually-hidden">Remover</span></span>
+              </div>
+              {items.length === 0 && <p className="qempty">Nenhum item ainda. Adicione os procedimentos do tratamento.</p>}
+              {items.map((r) => (
+                <div key={r.id} className={`plan-row${est ? ' est' : ''}`} role="row">
+                  {est ? (
+                    <>
+                      <span role="cell" className="q-main" style={{ color: '#8e2a62' }}>{r.regiao}</span>
+                      <span role="cell" className="q-main">{r.proc}</span>
+                      <span role="cell" className="num cell-sub" style={{ color: 'var(--slate)' }}>{r.qtd}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span role="cell"><span className="q-main tnum">{r.dente}</span>{r.face && r.face !== '—' && <span className="q-sub">face {r.face}</span>}</span>
+                      <span role="cell" className="q-main">{r.proc}</span>
+                    </>
+                  )}
+                  <span role="cell" className="num q-main">{brMoney(r.val)}</span>
+                  <span role="cell" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    {!approved && (
+                      <button className="nav-arrow" style={{ width: 30, height: 30, border: 'none', background: 'transparent' }} aria-label={`Remover ${r.proc}`} title="Remover" onClick={() => setRemovendo(r)}>
+                        <Icon name="trash" size={16} />
+                      </button>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-          {items.map((r) => (
-            <div key={r.id} className="table-row" style={{ gridTemplateColumns: est ? GRID_EST : GRID }}>
-              {est ? (
-                <>
-                  <span style={{ font: "800 12.5px 'Plus Jakarta Sans'", color: '#c2478a' }}>{r.regiao}</span>
-                  <span style={{ font: "600 13px 'Plus Jakarta Sans'", color: '#26324a' }}>{r.proc}</span>
-                  <span className="tnum" style={{ font: "700 12px 'JetBrains Mono'", color: '#5b647a', textAlign: 'right' }}>{r.qtd}</span>
-                </>
-              ) : (
-                <>
-                  <span style={{ font: "800 12.5px 'JetBrains Mono'", color: '#2f52e0' }}>{r.dente}</span>
-                  <span style={{ font: "700 12px 'JetBrains Mono'", color: '#5b647a' }}>{r.face}</span>
-                  <span style={{ font: "600 13px 'Plus Jakarta Sans'", color: '#26324a' }}>{r.proc}</span>
-                </>
-              )}
-              <span className="tnum" style={{ font: "700 13px 'Plus Jakarta Sans'", color: '#26324a', textAlign: 'right' }}>{brMoney(r.val)}</span>
-              <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <Menu items={[{ label: 'Excluir', danger: true, onClick: () => { remove(r.id); toast('Item removido.') } }]} />
+
+          <div className="plan-foot">
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, font: '600 12px var(--font)', color: 'var(--text-2)' }}>
+              Desconto
+              <span className="money-field">
+                <span>R$</span>
+                <input inputMode="decimal" value={discountTxt} disabled={approved} aria-describedby="desc-ajuda"
+                  onChange={(e) => setDiscountTxt(e.target.value)} onBlur={confirmarDesconto}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
               </span>
+              <span id="desc-ajuda" style={{ font: '400 11.5px var(--font)', color: 'var(--muted)' }}>entre R$ 0,00 e o subtotal</span>
+            </label>
+            <div className="totals">
+              <span>Subtotal</span><span>{brMoney(subtotal)}</span>
+              <span>Desconto</span><span style={{ color: discount ? 'var(--danger-text)' : undefined }}>{discount ? `− ${brMoney(discount)}` : brMoney(0)}</span>
+              <span className="total">Total</span><span className="total">{brMoney(total)}</span>
             </div>
-          ))}
-          <button onClick={() => setAddOpen(true)} style={{ width: '100%', textAlign: 'left', padding: '13px 18px', font: "700 12.5px 'Plus Jakarta Sans'", color: '#2f52e0', cursor: 'pointer', background: 'transparent', border: 'none' }}>
-            + Adicionar {est ? 'região' : 'procedimento'}
-          </button>
-        </div>
-
-        <div className="card card-hover" style={{ padding: '16px 20px', marginTop: 16, maxWidth: 340, marginLeft: 'auto' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>
-            <span>Subtotal</span><span className="tnum" style={{ color: '#26324a' }}>{brMoney(subtotal)}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>
-            <span>Desconto (R$)</span>
-            <input className="field-input" type="number" value={discount} onChange={(e) => { const v = Number(e.target.value) || 0; setDiscount(v); savePlan({ discount: v }) }} style={{ width: 100, height: 30, textAlign: 'right' }} />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 0', marginTop: 6, borderTop: '1px solid #eef1f1', font: "800 16px 'Plus Jakarta Sans'", color: '#26324a' }}>
-            <span>Total</span><span className="tnum">{brMoney(total)}</span>
-          </div>
-        </div>
-      </div>
+        </section>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div className="card card-hover" style={{ padding: '16px 18px' }}>
-          <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 10 }}>Aprovação do responsável</div>
-          <Button variant="whats" block onClick={sendWhats} style={{ marginBottom: 8 }}>Enviar por WhatsApp</Button>
-          <Button variant="teal-soft" block disabled={approved} onClick={aprovar}>
-            {approved ? 'Plano aprovado ✓' : 'Marcar como aprovado'}
-          </Button>
-        </div>
-
-        <div className="card card-hover" style={{ padding: '16px 18px' }}>
-          <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 10 }}>Parcelamento</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {PARCELAS.map((n) => {
-              const sel = n === parcelas
-              return (
-                <button key={n} onClick={() => setParcelas(n)} disabled={approved}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 13px', textAlign: 'left', borderRadius: 11, cursor: approved ? 'default' : 'pointer', border: `1.5px solid ${sel ? '#3f6bf5' : '#e5e9f2'}`, background: sel ? '#f5f8ff' : '#fff', opacity: approved && !sel ? 0.5 : 1 }}>
-                  <span style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{n === 1 ? 'À vista (Pix)' : `${n}x sem juros`}</span>
-                  <span className="tnum" style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: sel ? '#2f52e0' : '#8b93a7' }}>{brMoney(dividirParcelas(totalEm(n), n)[0])}</span>
+        <aside className="home-aside" aria-label="Pagamento e aprovação">
+          <section className="panel">
+            <h2 className="panel-title sm">Forma de pagamento</h2>
+            <div role="radiogroup" aria-label="Parcelamento" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+              {PARCELAS.map((n) => (
+                <button key={n} type="button" role="radio" aria-checked={n === parcelas} className="pay-option" disabled={approved} onClick={() => setParcelas(n)}>
+                  <span className="pay-radio" aria-hidden="true" />
+                  <span style={{ flex: 1 }}>
+                    <span style={{ display: 'block', font: `${n === parcelas ? 600 : 500} 13px var(--font)`, color: 'var(--ink)' }}>{rotuloParcela(n)}</span>
+                    {n === 1 && <span style={{ display: 'block', font: '400 11.5px var(--font)', color: 'var(--green-dark)' }}>5% de desconto</span>}
+                  </span>
+                  <span className="tnum" style={{ font: '600 13px var(--font)', color: 'var(--ink)' }}>
+                    {n === 1 ? brMoney(totalEm(1)) : `${n} × ${brMoney(dividirParcelas(totalEm(n), n)[0])}`}
+                  </span>
                 </button>
-              )
-            })}
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <div style={{ font: "700 11px 'Plus Jakarta Sans'", color: '#8b93a7', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-              {parcelas === 1 ? 'Vencimento' : '1º vencimento'}
+              ))}
             </div>
-            <DateField value={venc1} onChange={setVenc1} />
-            {parcelas > 1 && venc1 && (
-              <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7', marginTop: 6 }}>
-                Demais parcelas todo dia {Number(venc1.slice(8, 10))}, até {brDate(addMonths(venc1, parcelas - 1))}.
+            <div style={{ marginTop: 14 }}>
+              <div style={{ font: '600 12px var(--font)', color: 'var(--text-2)', marginBottom: 6 }}>{parcelas === 1 ? 'Vencimento' : '1º vencimento'}</div>
+              <DateField value={venc1} onChange={setVenc1} />
+              <div style={{ font: '400 11.5px var(--font)', color: 'var(--muted)', marginTop: 6 }}>sugestão: dia 5 do mês seguinte</div>
+            </div>
+            {venc1 && total > 0 && (
+              <div className="carne" aria-label="Carnê">
+                <div style={{ font: '600 11.5px var(--font)', color: 'var(--muted)' }}>{approved ? 'Carnê gerado' : 'Carnê gerado ao aprovar'}</div>
+                {valores.map((v, i) => (
+                  <div key={i} className="carne-row"><span>{brDate(addMonths(venc1, i))}</span><span>{brMoney(v)}</span></div>
+                ))}
               </div>
             )}
-          </div>
-        </div>
+          </section>
 
-        <Button block onClick={genPdf} style={{ height: 44 }}>Gerar PDF do orçamento</Button>
+          <section className="panel" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button className="btn-cta" style={{ height: 44, width: '100%' }} disabled={approved} onClick={pedirAprovacao}>
+              {approved ? <><Icon name="check" size={16} /> Plano aprovado</> : 'Aprovar plano…'}
+            </button>
+            <p style={{ margin: '0 0 4px', font: '400 11.5px var(--font)', color: 'var(--muted)', textAlign: 'center' }}>
+              {approved ? 'As parcelas estão no Financeiro.' : 'Pede confirmação, gera o carnê e trava os itens.'}
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn-soft" style={{ flex: 1, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={sendWhats}><Icon name="wa" size={15} /> Enviar por WhatsApp</button>
+              <button className="btn-soft" style={{ flex: 1, height: 40 }} onClick={() => setPrinting(true)}>Gerar PDF</button>
+            </div>
+          </section>
+        </aside>
       </div>
 
       <PrintDoc open={printing} title="Orçamento de tratamento" onClose={() => setPrinting(false)}>
@@ -265,11 +311,18 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Desconto</span><span>− {brMoney(discount)}</span></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', marginTop: 4, borderTop: '1.5px solid #2b2b2b', fontWeight: 800, fontSize: 14 }}><span>Total</span><span>{brMoney(total)}</span></div>
         </div>
-        <div style={{ marginTop: 18, fontSize: 11.5, color: '#555' }}>
+        <div style={{ marginTop: 18, fontSize: 11.5, color: 'var(--slate)' }}>
           Formas de pagamento: à vista no Pix com 5% de desconto ({brMoney(totalEm(1))}), ou em até 3x sem juros de {brMoney(dividirParcelas(total, 3)[0])}.
           Orçamento válido por 30 dias. Valores sujeitos a reavaliação clínica.
         </div>
       </PrintDoc>
+
+      <ConfirmDialog open={confirmAprovar} onClose={() => setConfirmAprovar(false)} onConfirm={aprovar} danger={false} confirmLabel="Aprovar plano"
+        title="Aprovar plano de tratamento"
+        message={`${parcelas === 1 ? `Será gerada 1 cobrança de ${brMoney(valores[0])} para ${brDate(venc1)}` : `Serão geradas ${parcelas} parcelas de ${brMoney(valores[0])} a partir de ${brDate(venc1)}`} no Financeiro${patient ? `, em nome de ${patient.resp && patient.resp !== '—' ? patient.resp.split('·')[0].trim() : patient.name}` : ''}. Depois de aprovado, os itens do plano ficam travados.`} />
+
+      <ConfirmDialog open={!!removendo} onClose={() => setRemovendo(null)} onConfirm={() => { if (removendo) { remove(removendo.id); toast('Item removido.') } }}
+        title="Remover item do plano" message={`Remover "${removendo?.proc ?? ''}" (${brMoney(removendo?.val ?? 0)}) do plano?`} confirmLabel="Remover" />
 
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title={est ? 'Adicionar região' : 'Adicionar procedimento'} width={420}
         footer={<><Button variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button><Button onClick={addItem}>Adicionar</Button></>}>

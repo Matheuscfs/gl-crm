@@ -112,3 +112,16 @@ export function maskBr(v: string): string {
   if (d.length > 4) out += '/' + d.slice(4, 8)
   return out
 }
+
+/** Saudação pelo horário: "Bom dia" até 12h, "Boa tarde" até 18h, depois "Boa noite". */
+export function saudacao(d: Date = new Date()): string {
+  const h = d.getHours()
+  if (h < 12) return 'Bom dia'
+  if (h < 18) return 'Boa tarde'
+  return 'Boa noite'
+}
+
+/** Dias corridos de `fromISO` até `toISO` (negativo se `toISO` vem antes). */
+export function diffDays(fromISO: string, toISO: string): number {
+  return Math.round((parseISO(toISO).getTime() - parseISO(fromISO).getTime()) / 86400000)
+}

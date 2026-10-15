@@ -29,7 +29,7 @@ export function Menu({
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
       <button
         className="icon-btn"
-        style={{ border: 'none', background: 'transparent', color: '#8b93a7', width: 30, height: 30 }}
+        style={{ border: 'none', background: 'transparent', color: 'var(--muted)', width: 30, height: 30 }}
         onClick={(e) => {
           e.stopPropagation()
           setOpen((v) => !v)
@@ -90,10 +90,10 @@ export function Dropdown({
           height: 34,
           padding: '0 13px',
           borderRadius: 9,
-          font: "700 12.5px 'Plus Jakarta Sans'",
+          font: "700 12.5px var(--font)",
           ...(on
-            ? { border: '1px solid #cdd8ff', background: '#e9eeff', color: '#2f52e0' }
-            : { border: '1px solid #d7ddea', background: '#fff', color: '#5b647a' }),
+            ? { border: '1px solid var(--primary-border)', background: 'var(--primary-bg)', color: 'var(--primary-dark)' }
+            : { border: '1px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--slate)' }),
         }}
       >
         {value && value !== options[0] ? value : label} ▾

@@ -115,9 +115,9 @@ export function AvatarCropper({ file, onCancel, onSave }: {
           <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(circle at center, transparent 0 39%, rgba(20,28,40,.45) 40%)' }} />
           <div style={{ position: 'absolute', inset: '11%', borderRadius: '50%', border: '2px solid rgba(255,255,255,.9)', pointerEvents: 'none' }} />
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', font: "700 11.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', font: "700 11.5px var(--font)", color: 'var(--slate)' }}>
           Zoom
-          <input type="range" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoomClamped(Number(e.target.value))} style={{ flex: 1, accentColor: '#3f6bf5' }} />
+          <input type="range" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoomClamped(Number(e.target.value))} style={{ flex: 1, accentColor: 'var(--primary)' }} />
         </label>
       </div>
     </Modal>

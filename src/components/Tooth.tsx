@@ -22,11 +22,11 @@ export function ToothBox({ state, size = 'lg', selected = false }: { state: Toot
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        font: `700 ${d.font}px/1 'Plus Jakarta Sans'`,
+        font: `700 ${d.font}px/1 var(--font)`,
         background: t.bg,
         color: t.fg,
         border: `1.5px ${t.dashed ? 'dashed' : 'solid'} ${t.border}`,
-        boxShadow: selected ? '0 0 0 2.5px #3f6bf5' : undefined,
+        boxShadow: selected ? '0 0 0 2.5px var(--primary)' : undefined,
       }}
     >
       {t.glyph}
@@ -47,7 +47,7 @@ export function ToothCol({
   selected?: boolean
   onClick?: (num: number) => void
 }) {
-  const numEl = <div style={{ font: `700 ${size === 'lg' ? 10 : 8}px 'JetBrains Mono'`, color: '#8b93a7' }}>{tooth.num}</div>
+  const numEl = <div style={{ font: `700 ${size === 'lg' ? 10 : 8}px var(--mono)`, color: 'var(--muted)' }}>{tooth.num}</div>
   const box = <ToothBox state={tooth.state} size={size} selected={selected} />
   return (
     <div
@@ -100,7 +100,7 @@ export function AnatomicalTooth({
   const kind = kindOf(tooth.num)
   const h = Math.round(width * 1.4)
   const numEl = (
-    <div style={{ font: "700 10px 'JetBrains Mono'", color: selected ? '#2f52e0' : '#8b93a7' }}>{tooth.num}</div>
+    <div style={{ font: "700 10px var(--mono)", color: selected ? 'var(--primary-dark)' : '#8b93a7' }}>{tooth.num}</div>
   )
   const svg = (
     <svg width={width} height={h} viewBox="0 0 40 56" style={{ display: 'block', overflow: 'visible' }}>
@@ -108,7 +108,7 @@ export function AnatomicalTooth({
         <path
           d={PATHS[kind]}
           fill={t.fill}
-          stroke={selected ? '#3f6bf5' : t.stroke}
+          stroke={selected ? '#5b2196' : t.stroke}
           strokeWidth={selected ? 2.4 : 1.6}
           strokeDasharray={t.dashed ? '3 2.5' : undefined}
           strokeLinejoin="round"

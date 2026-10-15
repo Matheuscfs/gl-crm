@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from 'react'
+import { useEscLayer } from './layers'
 
 export function useOutsideClick(ref: RefObject<HTMLElement>, onOutside: () => void, active = true) {
   useEffect(() => {
@@ -6,14 +7,10 @@ export function useOutsideClick(ref: RefObject<HTMLElement>, onOutside: () => vo
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onOutside()
     }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onOutside()
-    }
     document.addEventListener('mousedown', handler)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', handler)
-      document.removeEventListener('keydown', onKey)
-    }
+    return () => document.removeEventListener('mousedown', handler)
   }, [ref, onOutside, active])
+
+  // Esc fecha só este popup, não o modal em volta
+  useEscLayer(active, onOutside)
 }

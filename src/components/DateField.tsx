@@ -8,8 +8,8 @@ const MESES_ABBR = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set
 const SEMANA = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
 const pad = (n: number) => String(n).padStart(2, '0')
 
-const navBtn: CSSProperties = { width: 30, height: 30, border: 'none', borderRadius: 8, background: 'transparent', color: '#5b647a', font: "700 17px 'Plus Jakarta Sans'", cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }
-const titleBtn: CSSProperties = { flex: 1, height: 30, border: 'none', borderRadius: 8, background: 'transparent', color: '#26324a', font: "800 13px 'Plus Jakarta Sans'", cursor: 'pointer' }
+const navBtn: CSSProperties = { width: 30, height: 30, border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--slate)', font: "700 17px var(--font)", cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const titleBtn: CSSProperties = { flex: 1, height: 30, border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--ink)', font: "800 13px var(--font)", cursor: 'pointer' }
 
 /**
  * Calendário em três níveis (estilo Airbnb): dias → clique no título abre a grade
@@ -42,12 +42,12 @@ function Calendar({ value, onPick }: { value: string; onPick: (iso: string) => v
       key={opts.k}
       onClick={opts.onClick}
       style={{
-        height: opts.h ?? 32, border: opts.today && !opts.selected ? '1px solid #cdd8ff' : 'none', borderRadius: 9, cursor: 'pointer',
-        background: opts.selected ? '#3f6bf5' : 'transparent',
-        color: opts.selected ? '#fff' : opts.today ? '#2f52e0' : opts.muted ? '#aeb7c8' : '#26324a',
-        font: `${opts.selected ? 700 : 600} 12.5px 'Plus Jakarta Sans'`,
+        height: opts.h ?? 32, border: opts.today && !opts.selected ? '1px solid var(--primary-border)' : 'none', borderRadius: 9, cursor: 'pointer',
+        background: opts.selected ? 'var(--primary)' : 'transparent',
+        color: opts.selected ? '#fff' : opts.today ? 'var(--primary-dark)' : opts.muted ? 'var(--muted)' : 'var(--ink)',
+        font: `${opts.selected ? 700 : 600} 12.5px var(--font)`,
       }}
-      onMouseEnter={(e) => { if (!opts.selected) e.currentTarget.style.background = '#eef2f9' }}
+      onMouseEnter={(e) => { if (!opts.selected) e.currentTarget.style.background = 'var(--chip-bg)' }}
       onMouseLeave={(e) => { if (!opts.selected) e.currentTarget.style.background = 'transparent' }}
     >
       {opts.label}
@@ -69,7 +69,7 @@ function Calendar({ value, onPick }: { value: string; onPick: (iso: string) => v
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 2 }}>
             {SEMANA.map((d, i) => (
-              <span key={i} style={{ textAlign: 'center', font: "700 10.5px 'Plus Jakarta Sans'", color: '#8b93a7', padding: '4px 0' }}>{d}</span>
+              <span key={i} style={{ textAlign: 'center', font: "700 10.5px var(--font)", color: 'var(--muted)', padding: '4px 0' }}>{d}</span>
             ))}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
@@ -143,7 +143,7 @@ export function DateField({ value, onChange, autoFocus }: { value: string; onCha
         style={{ paddingRight: 34, width: '100%' }}
       />
       <button type="button" onClick={() => setOpen((v) => !v)} title="Abrir calendário" aria-label="Abrir calendário"
-        style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: open ? '#3f6bf5' : '#8b93a7', cursor: 'pointer' }}>
+        style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: open ? 'var(--primary)' : 'var(--muted)', cursor: 'pointer' }}>
         <Icon name="cal" size={16} />
       </button>
       {open && <Calendar value={value} onPick={(iso) => { onChange(iso); setOpen(false) }} />}

@@ -69,11 +69,11 @@ export function ReciboModal({ open, draft, onChange, onClose, onEmit, saving }: 
           <Field label="Valor (R$)">
             <TextInput inputMode="decimal" value={draft.value} onChange={(e) => onChange({ ...draft, value: e.target.value })} placeholder="0,00" />
           </Field>
-          <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: valor ? '#5b647a' : '#a81e1e' }}>
+          <div style={{ font: "600 11.5px var(--font)", color: valor ? '#5b647a' : '#a81e1e' }}>
             {valor ? `${brMoney(valor)} — ${extenso(valor)}.` : 'Informe um valor maior que zero.'}
           </div>
           {!draft.payerCpf.trim() && (
-            <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#9a5a06', background: '#fdf1e2', padding: '9px 11px', borderRadius: 10 }}>
+            <div style={{ font: "600 11.5px var(--font)", color: '#9a5a06', background: '#fdf1e2', padding: '9px 11px', borderRadius: 10 }}>
               Sem CPF o recibo imprime normalmente, mas o lançamento não fica completo para o Carnê-Leão.
             </div>
           )}
@@ -89,17 +89,17 @@ export function ReciboDoc({ recibo, clinic }: { recibo: Recibo; clinic: ClinicIn
     .filter(Boolean)
     .join(' · ')
   return (
-    <div style={{ font: "500 13px/1.8 'Plus Jakarta Sans'", color: '#1c2430' }}>
+    <div style={{ font: "500 13px/1.8 var(--font)", color: '#1c2430' }}>
       <div style={{ textAlign: 'center', marginBottom: 26 }}>
-        <div style={{ font: "800 18px 'Plus Jakarta Sans'" }}>{clinic.name}</div>
-        <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#5b647a' }}>{emissor}</div>
+        <div style={{ font: "800 18px var(--font)" }}>{clinic.name}</div>
+        <div style={{ font: "600 12px var(--font)", color: 'var(--slate)' }}>{emissor}</div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '2px solid #1c2430', borderBottom: '2px solid #1c2430', padding: '10px 2px', marginBottom: 22 }}>
-        <span style={{ font: "800 16px 'Plus Jakarta Sans'", letterSpacing: 1 }}>
-          RECIBO <span style={{ fontSize: 13, fontWeight: 700, color: '#5b647a' }}>Nº {String(recibo.number).padStart(4, '0')}</span>
+        <span style={{ font: "800 16px var(--font)", letterSpacing: 1 }}>
+          RECIBO <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--slate)' }}>Nº {String(recibo.number).padStart(4, '0')}</span>
         </span>
-        <span className="tnum" style={{ font: "800 16px 'Plus Jakarta Sans'" }}>{brMoney(recibo.value)}</span>
+        <span className="tnum" style={{ font: "800 16px var(--font)" }}>{brMoney(recibo.value)}</span>
       </div>
 
       <p style={{ margin: '0 0 16px' }}>
@@ -114,13 +114,13 @@ export function ReciboDoc({ recibo, clinic }: { recibo: Recibo; clinic: ClinicIn
       </p>
 
       <div style={{ width: 300, margin: '0 auto', textAlign: 'center', borderTop: '1px solid #1c2430', paddingTop: 8 }}>
-        <div style={{ font: "700 13px 'Plus Jakarta Sans'" }}>{BRAND.dentist}</div>
-        <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>
+        <div style={{ font: "700 13px var(--font)" }}>{BRAND.dentist}</div>
+        <div style={{ font: "600 11.5px var(--font)", color: 'var(--slate)' }}>
           {BRAND.role}{clinic.cpf ? ` · CPF ${clinic.cpf}` : ''}
         </div>
       </div>
 
-      <div style={{ marginTop: 30, font: "500 10.5px 'Plus Jakarta Sans'", color: '#7c869a', textAlign: 'center' }}>
+      <div style={{ marginTop: 30, font: "500 10.5px var(--font)", color: '#7c869a', textAlign: 'center' }}>
         Documento emitido eletronicamente pelo GL CRM · recibo nº {String(recibo.number).padStart(4, '0')}
       </div>
     </div>

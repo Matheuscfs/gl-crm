@@ -1,20 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Menu } from '../../components/Menu'
-import { Button } from '../../components/Button'
 import { useToast } from '../../components/Toast'
 import { useCollection, usePatientId } from '../../lib/useCollection'
 import { PrintDoc } from '../../components/PrintDoc'
 import { ReciboModal, ReciboDoc, type ReciboDraft } from '../../components/Recibo'
 import { listRecibos, createRecibo, type Recibo } from '../../lib/recibos'
 import { useClinic } from '../../lib/clinic'
-import { CountUp } from '../../components/ui'
 import { useStore } from '../../store'
-import { todayISO } from '../../lib/dates'
-import { parseMoney as toNumber } from '../../lib/money'
-import { PARCELA_STATUS, isSeedPatient, type ParcelaStatus } from '../../data'
+import { todayISO, addDays, brDate, isVencidaBr } from '../../lib/dates'
+import { parseMoney, brMoney } from '../../lib/money'
+import { waLink, contactPhone, contactName } from '../../lib/whats'
+import { isSeedPatient, type ParcelaStatus } from '../../data'
 
-const GRID = '2fr 1fr 1fr 1fr 34px'
 interface Row {
   id: string
   ref: string
@@ -22,11 +20,20 @@ interface Row {
   val: string
   status: ParcelaStatus
 }
+/** Vencimento a `dias` de hoje — a demonstração não envelhece com o calendário. */
+const vencEm = (dias: number) => brDate(addDays(todayISO(), dias))
 const SEED: Row[] = [
-  { id: 'seed-p1', ref: 'Plano #218 (1/3)', venc: '05/07/2026', val: 'R$ 200,00', status: 'pago' },
-  { id: 'seed-p2', ref: 'Plano #218 (2/3)', venc: '05/08/2026', val: 'R$ 200,00', status: 'aberto' },
-  { id: 'seed-p3', ref: 'Plano #218 (3/3)', venc: '05/09/2026', val: 'R$ 200,00', status: 'aberto' },
+  { id: 'seed-p1', ref: 'Plano #218 (1/3)', venc: vencEm(-6), val: 'R$ 200,00', status: 'pago' },
+  { id: 'seed-p2', ref: 'Plano #218 (2/3)', venc: vencEm(24), val: 'R$ 200,00', status: 'aberto' },
+  { id: 'seed-p3', ref: 'Plano #218 (3/3)', venc: vencEm(54), val: 'R$ 200,00', status: 'aberto' },
 ]
+const SITUACAO: Record<ParcelaStatus, { label: string; cls: string }> = {
+  vencida: { label: 'Vencida', cls: 'danger' },
+  aberto: { label: 'Em aberto', cls: 'warn' },
+  pago: { label: 'Paga', cls: 'ok' },
+}
+/** "vencida" é derivado do vencimento — nada grava esse status no banco. */
+const situacaoDe = (r: Row): ParcelaStatus => (r.status !== 'pago' && isVencidaBr(r.venc) ? 'vencida' : r.status)
 
 export default function FinanceiroPaciente() {
   const { toast } = useToast()
@@ -50,10 +57,10 @@ export default function FinanceiroPaciente() {
   const [ultimo, setUltimo] = useState(0)
   useEffect(() => { listRecibos().then((rs) => setUltimo(rs.reduce((m, r) => Math.max(m, r.number), 0))) }, [])
 
-  const parseMoney = (s: string) => Number(String(s).replace(/[^\d,]/g, '').replace(',', '.')) || 0
-  const brMoney = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   const total = rows.reduce((s, r) => s + parseMoney(r.val), 0)
   const pago = rows.filter((r) => r.status === 'pago').reduce((s, r) => s + parseMoney(r.val), 0)
+  const vencidas = rows.filter((r) => situacaoDe(r) === 'vencida')
+  const totalVencido = vencidas.reduce((s, r) => s + parseMoney(r.val), 0)
 
   const pac = patients.find((p) => p.name === patientName)
   const emitirRecibo = (items: Row[]) => {
@@ -74,7 +81,7 @@ export default function FinanceiroPaciente() {
 
   const confirmarRecibo = async () => {
     if (!draft) return
-    const value = toNumber(draft.value)
+    const value = parseMoney(draft.value)
     if (!draft.payerName.trim() || !value) return toast('Informe pagador e valor.', 'error')
     setEmitindo(true)
     const novo = await createRecibo({ ...draft, payerName: draft.payerName.trim(), value }, ultimo)
@@ -85,49 +92,72 @@ export default function FinanceiroPaciente() {
     toast(`Recibo nº ${String(novo.number).padStart(4, '0')} emitido.`)
   }
 
-  return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div className="stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-        <div className="card card-hover" style={{ padding: '16px 18px' }}>
-          <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Total</div>
-          <div className="tnum" style={{ font: "800 22px 'Plus Jakarta Sans'", color: '#26324a', marginTop: 6 }}><CountUp value={brMoney(total)} /></div>
-        </div>
-        <div className="card card-hover" style={{ padding: '16px 18px' }}>
-          <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Pago</div>
-          <div className="tnum" style={{ font: "800 22px 'Plus Jakarta Sans'", color: '#2f9a5b', marginTop: 6 }}><CountUp value={brMoney(pago)} /></div>
-        </div>
-        <div className="card card-hover" style={{ padding: '16px 18px' }}>
-          <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Em aberto</div>
-          <div className="tnum" style={{ font: "800 22px 'Plus Jakarta Sans'", color: '#d97706', marginTop: 6 }}><CountUp value={brMoney(total - pago)} /></div>
-        </div>
-      </div>
+  /** Lembrete da parcela pelo WhatsApp de quem paga (o responsável, no pediátrico). */
+  const cobrar = (r: Row) => {
+    const quem = contactName(pac, patientName)
+    const msg = `Oi, ${quem}! 😊 Passando para lembrar da parcela de ${brMoney(parseMoney(r.val))} (${r.ref}) com vencimento em ${r.venc}.\n\nQualquer dúvida, estamos à disposição! 🦷`
+    const link = waLink(contactPhone(pac), msg)
+    if (!link) return toast(`Sem telefone cadastrado para ${patientName}. Complete em Dados e responsáveis.`, 'error')
+    window.open(link, '_blank', 'noopener')
+    toast(`Cobrança aberta no WhatsApp para ${quem}.`)
+  }
 
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px 12px', font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', borderBottom: '1px solid #eff2f8' }}>Parcelas</div>
-        <div className="table-head" style={{ gridTemplateColumns: GRID, padding: '10px 20px' }}>
-          <span>REFERÊNCIA</span><span>VENCIMENTO</span><span style={{ textAlign: 'right' }}>VALOR</span><span style={{ textAlign: 'right' }}>STATUS</span><span />
-        </div>
-        {rows.map((r) => {
-          const st = PARCELA_STATUS[r.status]
-          return (
-            <div key={r.id} className="table-row" style={{ gridTemplateColumns: GRID, padding: '12px 20px' }}>
-              <span style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{r.ref}</span>
-              <span className="tnum" style={{ font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>{r.venc}</span>
-              <span className="tnum" style={{ font: "700 13px 'Plus Jakarta Sans'", color: '#26324a', textAlign: 'right' }}>{r.val}</span>
-              <span style={{ textAlign: 'right' }}><span className="pill" style={{ background: st.bg, color: st.fg }}>{st.label}</span></span>
-              <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <Menu items={[
-                  { label: 'Marcar como pago', disabled: r.status === 'pago', onClick: () => { save({ ...r, status: 'pago' }); toast('Parcela paga.') } },
-                  { label: 'Emitir recibo', disabled: r.status !== 'pago', onClick: () => emitirRecibo([r]) },
-                  { label: 'Enviar cobrança', onClick: () => toast('Cobrança enviada.', 'info') },
-                ]} />
-              </span>
+  return (
+    <div className="tab-body">
+      <div className="stack" style={{ gap: 16 }}>
+        <section aria-label="Resumo" style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <div className="panel kpi-flat compact" style={{ flex: '1 1 96px' }}>
+            <div className="l">Total</div>
+            <div className="v">{brMoney(total)}</div>
+            <div className="s">{rows.length} {rows.length === 1 ? 'parcela' : 'parcelas'}</div>
+          </div>
+          <div className="panel kpi-flat compact" style={{ flex: '1 1 96px' }}>
+            <div className="l">Pago</div>
+            <div className="v" style={{ color: 'var(--green-dark)' }}>{brMoney(pago)}</div>
+            <div className="s">{(() => { const n = rows.filter((r) => r.status === 'pago').length; return `${n} ${n === 1 ? 'paga' : 'pagas'}` })()}</div>
+          </div>
+          <div className={`panel kpi-flat compact${totalVencido > 0 ? ' danger' : ''}`} style={{ flex: '1 1 96px' }}>
+            <div className="l">Em aberto</div>
+            <div className="v">{brMoney(total - pago)}</div>
+            <div className="s">{vencidas.length ? `${brMoney(totalVencido)} vencidos` : 'nada vencido'}</div>
+          </div>
+        </section>
+
+        <section className="panel flush" aria-labelledby="parcelas-titulo">
+          <div className="panel-head">
+            <h2 id="parcelas-titulo" className="panel-title">Parcelas</h2>
+            <button className="btn-soft" onClick={() => emitirRecibo(rows.filter((r) => r.status === 'pago'))}>Recibo das parcelas pagas</button>
+          </div>
+          <div role="table" aria-label="Parcelas do paciente">
+            <div className="pfin-row head" role="row">
+              <span role="columnheader">Referência</span><span role="columnheader">Vencimento</span>
+              <span role="columnheader" className="num">Valor</span><span role="columnheader" className="hide-sm">Situação</span>
+              <span role="columnheader"><span className="visually-hidden">Ações</span></span>
             </div>
-          )
-        })}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button variant="outline" onClick={() => emitirRecibo(rows.filter((r) => r.status === 'pago'))}>Gerar recibo (parcelas pagas)</Button>
+            {rows.length === 0 && <p className="qempty">Nenhuma parcela. Elas aparecem aqui quando um plano é aprovado.</p>}
+            {rows.map((r) => {
+              const st = SITUACAO[situacaoDe(r)]
+              return (
+                <div key={r.id} className="pfin-row" role="row">
+                  <span className="q-text" role="cell">
+                    <span className="q-main">{r.ref}</span>
+                    <span className={`q-reason ${st.cls} show-sm`} style={{ marginTop: 2 }}>{st.label}</span>
+                  </span>
+                  <span className="cell-main" role="cell">{r.venc}</span>
+                  <span className="num q-main" role="cell" style={{ fontWeight: 600 }}>{brMoney(parseMoney(r.val))}</span>
+                  <span role="cell" className="hide-sm"><span className={`q-reason ${st.cls}`}>{st.label}</span></span>
+                  <span role="cell" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <Menu items={[
+                      { label: 'Marcar como pago', disabled: r.status === 'pago', onClick: () => { save({ ...r, status: 'pago' }); toast('Parcela marcada como paga.') } },
+                      { label: 'Emitir recibo', disabled: r.status !== 'pago', onClick: () => emitirRecibo([r]) },
+                      { label: 'Cobrar por WhatsApp', disabled: r.status === 'pago', onClick: () => cobrar(r) },
+                    ]} />
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </section>
       </div>
 
       <ReciboModal open={!!draft} draft={draft} onChange={setDraft} onClose={() => setDraft(null)} onEmit={confirmarRecibo} saving={emitindo} />
