@@ -32,8 +32,10 @@ Todas as telas existem e o typecheck passa limpo. O que falta é de três tipos:
 - **Supabase:** projeto GL CRM `qkgmlmlzahcsmxqwhgjr` (fora da org Aura; o MCP não alcança).
   Migrações 0001–0025 aplicadas pelo SQL Editor, sem `0002_seed` e `0008_seed_estetico`.
   Conferido pela API: as 27 tabelas existem e o acesso anônimo é negado (RLS da 0025).
-- **GitHub:** `auralink-dev/gl-crm` (privado), remoto local `auralink`, com `main` e
-  `front/fundacao-responsiva`. O PR #1 continua em `Matheuscfs/gl-crm` (`origin`).
+- **GitHub:** `auralink-dev/gl-crm` (privado) é o `origin`, com `main` e
+  `front/fundacao-responsiva`; o repositório antigo ficou como remoto `matheus`.
+  Commits saem como Aura Health (auralink-dev): no plano Hobby a Vercel só publica sozinha
+  commits do dono da conta.
 - **Vercel:** projeto `gl-crm` no time auraconnect-dev, ligado a `auralink-dev/gl-crm`,
   variáveis `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_DEMO_DATA=0`
   (produção e preview). Produção em https://gl-crm-delta.vercel.app, publicada manualmente a
