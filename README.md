@@ -36,7 +36,8 @@ Variáveis em `.env` (veja `.env.example`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_
 Aplique as migrações de `supabase/migrations/` em ordem no SQL Editor (sem `0002_seed` e
 `0008_seed_estetico`, que são dados fictícios). A **0026** traz prontuário com rastro, odontograma por
 face, anexos, aplicações com lote, índices, automação e agendamento online; a **0027** fecha o acesso à
-equipe cadastrada. A primeira pessoa que entrar depois da 0027 vira administradora.
+equipe cadastrada (a primeira pessoa que entrar depois dela vira administradora); a **0028** fecha os
+dois avisos do Security Advisor (funções de gatilho).
 
 ## Automação
 

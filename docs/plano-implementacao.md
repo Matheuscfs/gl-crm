@@ -40,14 +40,20 @@ Todas as telas existem e o typecheck passa limpo. O que falta é de três tipos:
   variáveis `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_DEMO_DATA=0`
   (produção e preview). Produção em https://gl-crm-delta.vercel.app, publicada manualmente a
   partir de `front/fundacao-responsiva`; pushes em `main` passam a publicar sozinhos.
-**Falta fazer no painel (só o dono da conta Supabase consegue):**
-- [ ] SQL Editor: aplicar `0026_prontuario_automacao.sql` e depois `0027_equipe_acesso.sql`.
-- [ ] Authentication → URL Configuration: Site URL `https://gl-crm-delta.vercel.app` e, em
+**No painel (15/10/2026, feito pelo usuário e conferido pela API pública e pelo painel):**
+- [x] SQL Editor: `0026_prontuario_automacao.sql` e `0027_equipe_acesso.sql` aplicadas (`horarios_livres`
+      responde ao visitante; `minha_situacao` existe e recusa anônimo; `patients` fechada para anônimo).
+- [x] Authentication → URL Configuration: Site URL `https://gl-crm-delta.vercel.app` e, em
       Redirect URLs, `https://gl-crm-delta.vercel.app/**` (links de confirmação e de nova senha).
-- [ ] Authentication → Sign In / Providers: cadastro por e-mail ligado. A Dra. cria a conta pela
+- [x] Authentication → Sign In / Providers: cadastro por e-mail ligado (com confirmação). A Dra. cria a conta pela
       tela "Criar conta"; depois da 0027 o primeiro login vira administradora e libera a equipe.
-- [ ] Rodar o Security Advisor no painel do projeto novo.
-- [ ] (Opcional, automação) publicar as Edge Functions, cadastrar os segredos (Meta, Asaas,
+- [x] Checagens do Security Advisor (as mesmas do splinter: RLS, views, `search_path`, `security
+      definer`, políticas `true`, `user_metadata`, buckets e grants) sobre 0001–0027 no Postgres de
+      teste: 2 avisos, corrigidos na `0028_ajustes_seguranca.sql` (sem achados depois dela; auditoria
+      e bloqueio de exclusão conferidos com usuário comum da equipe).
+- [ ] SQL Editor: rodar a `0028_ajustes_seguranca.sql` (3 linhas, pode repetir) e, se quiser, o
+      Security Advisor do painel para confirmar — a sessão do painel no navegador embutido expirou.
+- [ ] (Opcional, decisão sua — depende das contas na Meta e no Asaas) publicar as Edge Functions, cadastrar os segredos (Meta, Asaas,
       `CRON_SECRET`) e rodar `supabase/automacao/agendar_cron.sql` — guia em `supabase/functions/README.md`.
 
 ---
