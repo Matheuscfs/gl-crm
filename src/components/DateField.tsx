@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Icon } from '../icons'
 import { brDate, parseBr, maskBr, todayISO, parseISO } from '../lib/dates'
 import { useOutsideClick } from './useOutsideClick'
+import { Popover } from './Popover'
 
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 const MESES_ABBR = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
@@ -58,7 +59,7 @@ function Calendar({ value, onPick }: { value: string; onPick: (iso: string) => v
   const nDias = new Date(y, m + 1, 0).getDate()
 
   return (
-    <div className="menu-pop" style={{ left: 0, width: 268, padding: 12 }}>
+    <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
         <button style={navBtn} onClick={prev} aria-label="Anterior">‹</button>
         <button style={titleBtn} onClick={drill} title={view === 'dias' ? 'Escolher mês' : view === 'meses' ? 'Escolher ano' : undefined}>{title}</button>
@@ -112,7 +113,7 @@ function Calendar({ value, onPick }: { value: string; onPick: (iso: string) => v
           })}
         </div>
       )}
-    </div>
+    </>
   )
 }
 
@@ -121,7 +122,8 @@ export function DateField({ value, onChange, autoFocus }: { value: string; onCha
   const [text, setText] = useState(() => brDate(value))
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  useOutsideClick(ref, () => setOpen(false), open)
+  const popRef = useRef<HTMLDivElement>(null)
+  useOutsideClick([ref, popRef], () => setOpen(false), open)
   useEffect(() => { setText(brDate(value)) }, [value])
   const onText = (v: string) => {
     const masked = maskBr(v)
@@ -146,7 +148,9 @@ export function DateField({ value, onChange, autoFocus }: { value: string; onCha
         style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: open ? 'var(--primary)' : 'var(--muted)', cursor: 'pointer' }}>
         <Icon name="cal" size={16} />
       </button>
-      {open && <Calendar value={value} onPick={(iso) => { onChange(iso); setOpen(false) }} />}
+      <Popover anchor={ref} popRef={popRef} open={open} width={268} style={{ padding: 12, display: 'block' }}>
+        <Calendar value={value} onPick={(iso) => { onChange(iso); setOpen(false) }} />
+      </Popover>
     </div>
   )
 }

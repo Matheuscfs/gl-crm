@@ -4,7 +4,7 @@ import { guardarLink, sairSePuder } from '../lib/leaveGuard'
 import { TemaSeletor } from './TemaSeletor'
 import { Icon } from '../icons'
 import { useOutsideClick } from './useOutsideClick'
-import { useStore } from '../store'
+import { useStore, patientPath } from '../store'
 import { useToast } from './Toast'
 import { BRAND } from '../brand'
 import { supabase } from '../lib/supabase'
@@ -147,7 +147,8 @@ export function GlobalSearch({ width = 300, placeholder = 'Buscar paciente…' }
   const go = (name: string) => {
     setOpen(false)
     setQ('')
-    navigate(`/pacientes/${encodeURIComponent(name)}/odontograma`)
+    const p = patients.find((x) => x.name === name)
+    navigate(p ? patientPath(p, 'odontograma') : `/pacientes/${encodeURIComponent(name)}/odontograma`)
   }
 
   return (

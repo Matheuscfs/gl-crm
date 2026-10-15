@@ -7,7 +7,7 @@ import { brMoney, parseMoney, extenso } from '../lib/money'
 import { brDate } from '../lib/dates'
 import { BRAND } from '../brand'
 import type { Recibo, ReciboOrigem } from '../lib/recibos'
-import type { ClinicInfo } from '../lib/clinic'
+import { cidadeUf, type ClinicInfo } from '../lib/clinic'
 
 export type { ClinicInfo }
 
@@ -85,19 +85,18 @@ export function ReciboModal({ open, draft, onChange, onClose, onEmit, saving }: 
 
 /** Corpo imprimível do recibo (vai dentro de <PrintDoc>). */
 export function ReciboDoc({ recibo, clinic }: { recibo: Recibo; clinic: ClinicInfo }) {
-  const emissor = [clinic.cro, clinic.cnpj ? `CNPJ ${clinic.cnpj}` : '', clinic.cpf ? `CPF ${clinic.cpf}` : '', clinic.address]
+  const local = cidadeUf(clinic)
+  const emissor = [clinic.name, clinic.cnpj ? `CNPJ ${clinic.cnpj}` : '', clinic.address !== local ? clinic.address : '', local]
     .filter(Boolean)
     .join(' · ')
+  // o cabeçalho (logo) e o título "Recibo" vêm da folha (DocSheet); aqui só o emissor e o número
   return (
     <div style={{ font: "500 13px/1.8 var(--font)", color: '#1c2430' }}>
-      <div style={{ textAlign: 'center', marginBottom: 26 }}>
-        <div style={{ font: "800 18px var(--font)" }}>{clinic.name}</div>
-        <div style={{ font: "600 12px var(--font)", color: 'var(--slate)' }}>{emissor}</div>
-      </div>
+      <div style={{ textAlign: 'center', marginBottom: 18, font: "600 11.5px var(--font)", color: 'var(--slate)' }}>{emissor}</div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '2px solid #1c2430', borderBottom: '2px solid #1c2430', padding: '10px 2px', marginBottom: 22 }}>
-        <span style={{ font: "800 16px var(--font)", letterSpacing: 1 }}>
-          RECIBO <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--slate)' }}>Nº {String(recibo.number).padStart(4, '0')}</span>
+        <span style={{ font: "700 14px var(--font)", letterSpacing: 0.5 }}>
+          Nº {String(recibo.number).padStart(4, '0')}
         </span>
         <span className="tnum" style={{ font: "800 16px var(--font)" }}>{brMoney(recibo.value)}</span>
       </div>
@@ -110,13 +109,13 @@ export function ReciboDoc({ recibo, clinic }: { recibo: Recibo; clinic: ClinicIn
       </p>
 
       <p style={{ margin: '0 0 44px' }}>
-        {BRAND.city}, {brDate(recibo.issuedOn)}.
+        {local || BRAND.city}, {brDate(recibo.issuedOn)}.
       </p>
 
       <div style={{ width: 300, margin: '0 auto', textAlign: 'center', borderTop: '1px solid #1c2430', paddingTop: 8 }}>
-        <div style={{ font: "700 13px var(--font)" }}>{BRAND.dentist}</div>
+        <div style={{ font: "700 13px var(--font)" }}>{clinic.profissional}</div>
         <div style={{ font: "600 11.5px var(--font)", color: 'var(--slate)' }}>
-          {BRAND.role}{clinic.cpf ? ` · CPF ${clinic.cpf}` : ''}
+          {clinic.especialidade} · {clinic.cro}{clinic.cpf ? ` · CPF ${clinic.cpf}` : ''}
         </div>
       </div>
 

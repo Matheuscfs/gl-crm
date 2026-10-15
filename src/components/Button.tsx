@@ -1,6 +1,6 @@
 import { useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 
-type Variant = 'primary' | 'outline' | 'teal-soft' | 'whats' | 'ghost'
+type Variant = 'primary' | 'outline' | 'teal-soft' | 'whats' | 'ghost' | 'danger'
 type Size = 'md' | 'sm'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

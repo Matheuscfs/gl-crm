@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PatientPhoto } from '../components/PatientPhoto'
 import { useToast } from '../components/Toast'
-import { useStore, initials } from '../store'
-import { findPatientByName, waLink, contactPhone } from '../lib/whats'
+import { useStore, initials, patientPath, type PatientRow } from '../store'
+import { findPatientForEvent, waLink, contactPhone } from '../lib/whats'
 import { todayISO, addDays, parseISO, saudacao, parseBr, brToIso, diffDays } from '../lib/dates'
 import { fmtHour, idadeLabel, TREAT_STATUS, type ApptStatus, type Patient } from '../data'
 import { diasDeRetornoVencido, rotuloRetornoVencido } from '../lib/retornos'
 import { useParcelas } from '../lib/useParcelas'
+import { usePedidosRemarcar } from '../lib/automacao'
 import { brMoney } from '../lib/money'
 import { BRAND } from '../brand'
 import { msgRetorno, msgRetoque, msgAniversario, msgConfirmacao, ehCrianca } from '../lib/mensagens'
@@ -83,11 +84,13 @@ export default function Dashboard() {
   const amanhaSemConfirmacao = events.filter((e) => e.date === tomorrow && e.status === 'agendado')
   const vencidas = (parcelas ?? []).filter((r) => r.status === 'vencida')
   const diasMaisAntiga = vencidas.reduce((m, r) => Math.max(m, diffDays(brToIso(r.venc) || today, today)), 0)
-  const pendencias = amanhaSemConfirmacao.length + vencidas.length
+  // respostas "remarcar" à confirmação automática (WhatsApp): a recepção precisa ligar
+  const pedidosRemarcar = usePedidosRemarcar().filter((m) => events.some((e) => e.id === m.appointment_id && e.status === 'agendado'))
+  const pendencias = amanhaSemConfirmacao.length + vencidas.length + pedidosRemarcar.length
 
   const retornos = useMemo(() => patients
     .map((p) => ({ p, dias: diasDeRetornoVencido(p, today) }))
-    .filter((x): x is { p: Patient; dias: number } => x.dias !== null)
+    .filter((x): x is { p: PatientRow; dias: number } => x.dias !== null)
     .sort((a, b) => b.dias - a.dias), [patients, today])
 
   /* ---------- quem chamar primeiro ---------- */
@@ -96,7 +99,7 @@ export default function Dashboard() {
 
     retornos.forEach(({ p, dias }) => {
       out.push({
-        key: `ret-${p.name}`, motivo: 'retorno', nome: p.name, link: `/pacientes/${encodeURIComponent(p.name)}`,
+        key: `ret-${p.name}`, motivo: 'retorno', nome: p.name, link: patientPath(p),
         sub: p.resp && p.resp !== '—' ? p.resp : 'o próprio paciente',
         porque: rotuloRetornoVencido(dias),
         porqueSub: p.last && p.last !== '—' ? `último atendimento em ${p.last}` : 'sem atendimento registrado',
@@ -128,7 +131,7 @@ export default function Dashboard() {
       const meses = Math.floor(diffDays(ultima, today) / 30)
       if (meses < RETOQUE_MESES) return
       out.push({
-        key: `ret-est-${p.name}`, motivo: 'retoque', nome: p.name, link: `/pacientes/${encodeURIComponent(p.name)}`,
+        key: `ret-est-${p.name}`, motivo: 'retoque', nome: p.name, link: patientPath(p),
         sub: 'estético',
         porque: `Última visita há ${meses} meses`,
         porqueSub: `em ${p.last}`,
@@ -151,7 +154,7 @@ export default function Dashboard() {
         const anos = d.getFullYear() - b.getFullYear()
         const quando = i === 0 ? 'hoje' : i === 1 ? 'amanhã' : `${WD_LOWER[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
         out.push({
-          key: `bday-${p.name}`, motivo: 'aniversario', nome: p.name, link: `/pacientes/${encodeURIComponent(p.name)}`,
+          key: `bday-${p.name}`, motivo: 'aniversario', nome: p.name, link: patientPath(p),
           sub: p.resp && p.resp !== '—' ? p.resp : 'o próprio paciente',
           porque: `Faz ${plural(anos, 'ano', 'anos')} ${quando}`,
           porqueSub: 'mensagem pronta para enviar',
@@ -231,7 +234,7 @@ export default function Dashboard() {
     <>
       <header className="topbar">
         <div>
-          <h1 className="topbar-title">{saudacao()}, {doutora}</h1>
+          <h1 className="topbar-title">{saudacao()}, <span className="title-2">{doutora}</span></h1>
           <p className="topbar-sub">{dateLabel}</p>
         </div>
       </header>
@@ -253,10 +256,13 @@ export default function Dashboard() {
                     : [
                         amanhaSemConfirmacao.length ? `${plural(amanhaSemConfirmacao.length, 'consulta', 'consultas')} de amanhã ainda sem confirmação` : '',
                         vencidas.length ? `${plural(vencidas.length, 'parcela vencida', 'parcelas vencidas')}${diasMaisAntiga > 30 ? ', a mais antiga há mais de 30 dias' : ''}` : '',
+                        pedidosRemarcar.length ? `${plural(pedidosRemarcar.length, 'paciente pediu', 'pacientes pediram')} para remarcar pelo WhatsApp` : '',
                       ].filter(Boolean).join(' · ') + '.'}
                 </p>
               </div>
-              {amanhaSemConfirmacao.length > 0 ? (
+              {pedidosRemarcar.length > 0 ? (
+                <button className="btn-cta" onClick={() => navigate('/agenda')}>Ver quem pediu para remarcar</button>
+              ) : amanhaSemConfirmacao.length > 0 ? (
                 <button className="btn-cta" onClick={() => navigate('/agenda')}>Confirmar consultas de amanhã</button>
               ) : vencidas.length > 0 ? (
                 <button className="btn-cta" onClick={() => navigate('/financeiro')}>Ver parcelas vencidas</button>
@@ -277,7 +283,7 @@ export default function Dashboard() {
               ) : (
                 <div className="fila">
                   {hoje.map((e) => {
-                    const p = findPatientByName(patients, e.child)
+                    const p = findPatientForEvent(patients, e)
                     const idade = p?.birthdate ? idadeLabel(p.birthdate) : e.age
                     const tag = TAG[e.status]
                     return (
@@ -287,7 +293,7 @@ export default function Dashboard() {
                             <PatientPhoto src={p?.photoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} fallback={p?.initials ?? initials(e.child)} />
                           </span>
                           {p ? (
-                            <Link to={`/pacientes/${encodeURIComponent(p.name)}`} className="fila-name">{p.name}{idade ? <span> · {idade}</span> : null}</Link>
+                            <Link to={patientPath(p)} className="fila-name">{p.name}{idade ? <span> · {idade}</span> : null}</Link>
                           ) : (
                             <span className="fila-name">{e.child}{idade ? <span> · {idade}</span> : null}</span>
                           )}
@@ -312,7 +318,7 @@ export default function Dashboard() {
             {/* retornos vencidos */}
             {retornos.length > 0 && (
               <section className="notice" aria-label="Retornos vencidos">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c62828" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M12 3.5 22 20H2z" /><path d="M12 10v4" /><path d="M12 17.4v.01" />
                 </svg>
                 <p className="notice-text">

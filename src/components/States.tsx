@@ -28,7 +28,7 @@ export function EmptyState({
 export function ErrorState({ onRetry }: { onRetry?: () => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '40px 16px' }}>
-      <div style={{ width: 60, height: 60, borderRadius: 18, background: 'var(--red-bg)', color: '#ef6f68', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+      <div style={{ width: 60, height: 60, borderRadius: 18, background: 'var(--red-bg)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
         <Icon name="alert" size={26} />
       </div>
       <div style={{ font: "800 15px var(--font)", color: 'var(--ink)' }}>Não foi possível carregar</div>

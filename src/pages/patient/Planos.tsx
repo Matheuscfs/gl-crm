@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Field, TextInput, FieldRow } from '../../components/Field'
 import { useToast } from '../../components/Toast'
-import { useCollection, usePatientId } from '../../lib/useCollection'
+import { useCollection, usePatient } from '../../lib/useCollection'
 import { SuggestInput } from '../../components/SuggestInput'
 import { DateField } from '../../components/DateField'
 import { supabase } from '../../lib/supabase'
@@ -31,23 +30,19 @@ const fmtValor = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigit
 export default function Planos({ perfil }: { perfil?: Perfil }) {
   const est = perfil === 'estetico'
   const { toast } = useToast()
-  const patientId = usePatientId()
-  const { id: idRota } = useParams()
-  const { patients, procedimentos } = useStore()
-  // pelo id quando há banco; pelo nome da rota no modo demonstração (sem _id o PDF saía sem nome)
-  const nomeRota = idRota ? decodeURIComponent(idRota) : ''
-  const patient = patients.find((p) => (p as { _id?: string })._id === patientId && patientId) ?? patients.find((p) => p.name === nomeRota)
+  const { patient, patientId } = usePatient()
+  const { procedimentos } = useStore()
   const { rows: items, add, remove } = useCollection<Item>(
     'plan_items',
     patientId,
     (r) => ({ id: r.id as string, dente: (r.dente as string) ?? '', face: (r.face as string) ?? '', regiao: (r.regiao as string) ?? '', proc: (r.proc as string) ?? '', qtd: (r.qtd as string) ?? '', val: Number(r.val) || 0 }),
     (it) => ({ dente: it.dente, face: it.face, regiao: it.regiao, proc: it.proc, qtd: it.qtd, val: it.val }),
-    isSeedPatient(patient?.name) ? (est ? seedEst : seedPed) : [], // plano demo só nos pacientes de demonstração
+    isSeedPatient(patient) ? (est ? seedEst : seedPed) : [], // plano demo só nos pacientes de demonstração
   )
   const [approved, setApproved] = useState(false)
-  const [discount, setDiscount] = useState(isSeedPatient(patient?.name) ? (est ? 150 : 40) : 0)
+  const [discount, setDiscount] = useState(isSeedPatient(patient) ? (est ? 150 : 40) : 0)
   // o campo guarda o texto digitado; o desconto só vale (e só grava) ao sair do campo
-  const [discountTxt, setDiscountTxt] = useState(() => fmtValor(isSeedPatient(patient?.name) ? (est ? 150 : 40) : 0))
+  const [discountTxt, setDiscountTxt] = useState(() => fmtValor(isSeedPatient(patient) ? (est ? 150 : 40) : 0))
   const [parcelas, setParcelas] = useState(3)
   const [venc1, setVenc1] = useState(() => primeiroVencimento())
   const [printing, setPrinting] = useState(false)
@@ -198,7 +193,7 @@ export default function Planos({ perfil }: { perfil?: Perfil }) {
                 <div key={r.id} className={`plan-row${est ? ' est' : ''}`} role="row">
                   {est ? (
                     <>
-                      <span role="cell" className="q-main" style={{ color: '#8e2a62' }}>{r.regiao}</span>
+                      <span role="cell" className="q-main" style={{ color: 'var(--brand-pink)' }}>{r.regiao}</span>
                       <span role="cell" className="q-main">{r.proc}</span>
                       <span role="cell" className="num cell-sub" style={{ color: 'var(--slate)' }}>{r.qtd}</span>
                     </>

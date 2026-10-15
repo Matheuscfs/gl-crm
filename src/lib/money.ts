@@ -1,9 +1,36 @@
 /* Helpers de moeda (pt-BR) compartilhados. */
 
-/** "R$ 1.234,56" → 1234.56 ; aceita number direto. */
-export const parseMoney = (s: string | number): number => {
-  if (typeof s === 'number') return s
-  return Number(String(s).replace(/[^\d,-]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.')) || 0
+/**
+ * Texto de valor → número em reais (2 casas). Entende o que se digita no Brasil e no teclado
+ * decimal do tablet (que só tem ponto):
+ *   "R$ 1.234,56" → 1234.56 · "180,50" → 180.5 · "180.50" → 180.5 · "1.234" → 1234
+ *   "1,234.56" → 1234.56 · "-50" → -50 (o sinal fica; quem chama valida) · "" / "abc" → 0
+ * Regra: com ponto e vírgula, o separador que vier por último é o decimal; só com ponto, ele é
+ * de milhar quando há exatamente 3 dígitos depois (ou mais de um ponto), senão é decimal.
+ */
+export const parseMoney = (s: string | number | null | undefined): number => {
+  if (typeof s === 'number') return Number.isFinite(s) ? Math.round(s * 100) / 100 : 0
+  if (!s) return 0
+  const raw = String(s).trim()
+  const neg = /^-|^R\$\s*-|\(\s*R?\$?/.test(raw)
+  let t = raw.replace(/[^\d.,]/g, '')
+  if (!t) return 0
+  const lastComma = t.lastIndexOf(',')
+  const lastDot = t.lastIndexOf('.')
+  if (lastComma >= 0 && lastDot >= 0) {
+    const dec = lastComma > lastDot ? ',' : '.'
+    const mil = dec === ',' ? '.' : ','
+    t = t.split(mil).join('').replace(dec, '.')
+  } else if (lastComma >= 0) {
+    t = (t.match(/,/g)!.length > 1) ? t.split(',').join('') : t.replace(',', '.')
+  } else if (lastDot >= 0) {
+    const depois = t.length - lastDot - 1
+    const pontos = t.match(/\./g)!.length
+    if (pontos > 1 || depois === 3) t = t.split('.').join('')
+  }
+  const n = Number(t)
+  if (!Number.isFinite(n)) return 0
+  return Math.round((neg ? -n : n) * 100) / 100
 }
 
 /** 1234.5 → "R$ 1.234,50" */

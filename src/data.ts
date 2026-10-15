@@ -1,4 +1,5 @@
 /* Mock data layer mirroring the design prototype (CRM Odontopediátrico.dc.html). */
+import { DEMO_DATA } from './lib/demo'
 import { INVENTARIO, INVENTARIO_DATA } from './inventario'
 import { parseISO, addDays, todayISO, brDate } from './lib/dates'
 
@@ -22,64 +23,11 @@ export const STATUS: Record<
   desmarcado: { label: 'Desmarcado', dot: '#94a3b8', bg: 'var(--chip-bg)', fg: '#7d8a97', border: '#e0e5e9' },
 }
 
-export const dashboardCards = [
-  { label: 'Atendimentos hoje', value: '12', sub: '3 em sala de espera', tone: 'var(--primary)' },
-  { label: 'Confirmações pendentes', value: '05', sub: 'para amanhã', tone: '#d97706' },
-  { label: 'Faltas do mês', value: '04', sub: '2 a menos que junho', tone: '#16a34a' },
-  { label: 'Faturamento do mês', value: 'R$ 38.420', sub: '12% acima da meta', tone: 'var(--primary)' },
-]
-
-export interface Appt {
-  time: string
-  child: string
-  age: string
-  proc: string
-  resp: string
-  status: ApptStatus
-}
-
-export const todayAppts: Appt[] = [
-  { time: '08:00', child: 'Miguel Andrade', age: '6a 1m', proc: 'Profilaxia + flúor', resp: 'Carla Andrade · mãe', status: 'concluido' },
-  { time: '09:00', child: 'Sofia Martins', age: '8a 4m', proc: 'Manutenção de aparelho', resp: 'Ana Paula · mãe', status: 'em_atendimento' },
-  { time: '10:30', child: 'Bento Correia', age: '3a 2m', proc: 'Restauração (74)', resp: 'Rafael Correia · pai', status: 'agendado' },
-  { time: '11:15', child: 'Laura Nunes', age: '4a 0m', proc: '1ª consulta', resp: 'Bianca Nunes · mãe', status: 'agendado' },
-  { time: '14:00', child: 'Alice Ferreira', age: '5a 6m', proc: 'Retorno de 6 meses', resp: 'Juliana F. · mãe', status: 'confirmado' },
-  { time: '15:00', child: 'Théo Ramos', age: '7a 3m', proc: 'Selante (16, 26)', resp: 'Diego Ramos · pai', status: 'confirmado' },
-  { time: '16:00', child: 'Nina Barbosa', age: '7a 8m', proc: 'Aplicação de flúor', resp: 'Paula B. · mãe', status: 'agendado' },
-]
-
-export const birthdays = [
-  { initials: 'AF', name: 'Alice Ferreira', info: 'completa 5 anos', when: 'hoje' },
-  { initials: 'GP', name: 'Gael Pinto', info: 'completa 3 anos', when: 'sex 19/07' },
-  { initials: 'HS', name: 'Helena Souza', info: 'completa 6 anos', when: 'sáb 20/07' },
-]
-
-export const overdueReturns = [
-  { name: 'Davi Moreira', info: 'Retorno de 6 meses', late: 'há 22 dias' },
-  { name: 'Manuela Dias', info: 'Reavaliação de selante', late: 'há 15 dias' },
-  { name: 'Lorenzo Alves', info: 'Retorno pós-restauração', late: 'há 8 dias' },
-]
-
-export const estheticRetouch = [
-  { name: 'Camila Nogueira', info: 'Botox testa/glabela', since: 'aplicado há ~4 meses' },
-  { name: 'Marina Haab', info: 'Preenchimento labial', since: 'aplicado há ~6 meses' },
-  { name: 'Rodrigo Alves', info: 'Toxina — pés de galinha', since: 'aplicado há ~5 meses' },
-]
-
 /* ---------- Agenda ---------- */
 
 export const AGENDA_START = 8
 export const AGENDA_ROW = 64
 export const timeLabels = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00']
-
-export const weekDays = [
-  { d: 'SEG', n: '15', today: false },
-  { d: 'TER', n: '16', today: false },
-  { d: 'QUA', n: '17', today: true },
-  { d: 'QUI', n: '18', today: false },
-  { d: 'SEX', n: '19', today: false },
-  { d: 'SÁB', n: '20', today: false },
-]
 
 export type ApptKind = 'ped' | 'est' | 'adt'
 
@@ -92,6 +40,16 @@ export interface AgendaEvent {
   status: ApptStatus
   kind?: ApptKind
   date?: string
+  /** Paciente do cadastro (id do banco). Agendamentos antigos só têm o nome em `child`. */
+  patientId?: string
+  /** Procedimento da tabela de preços — a cobrança e a baixa usam este, não o texto. */
+  procId?: string
+  /** Quando a conclusão já cobrou e deu baixa no estoque (evita cobrar duas vezes). */
+  cobradoEm?: string
+  /** Evento correspondente no Google Agenda. */
+  gcalId?: string
+  /** Confirmado pelo paciente respondendo ao WhatsApp automático. */
+  confirmadoEm?: string
 }
 
 const E = (start: number, dur: number, child: string, age: string, proc: string, status: ApptStatus, kind: ApptKind = 'ped'): AgendaEvent => ({
@@ -134,6 +92,8 @@ export const PERFIL: Record<Perfil, { label: string; short: string; bg: string; 
 export const perfilToKind = (perfil?: Perfil): ApptKind => (perfil === 'estetico' ? 'est' : perfil === 'adulto' ? 'adt' : 'ped')
 
 export interface Patient {
+  /** Id do banco (uuid). Provisório "tmp…" até o insert voltar; "seed-…" nos dados de demonstração. */
+  _id?: string
   initials: string
   name: string
   age: string
@@ -166,7 +126,12 @@ export const ORIGENS = ['Instagram', 'Indicação', 'Google', 'Facebook', 'Whats
  * planos, financeiro, documentos, fotos) só mostram dados demo para esses pacientes —
  * cadastros novos começam completamente zerados.
  */
-export const isSeedPatient = (name?: string) => !!name && patients.some((p) => p.name === name)
+export const isSeedPatient = (p?: string | { _id?: string; name?: string } | null) => {
+  // fora do modo demonstração ninguém é "de exemplo": um homônimo do seed não herda dados fictícios
+  if (!DEMO_DATA || !p) return false
+  if (typeof p !== 'string') return p._id ? p._id.startsWith('seed-') : !!p.name && patients.some((s) => s.name === p.name)
+  return patients.some((s) => s.name === p)
+}
 
 /** Categorias e subcategorias pré-cadastradas dos lançamentos financeiros (receitas e despesas). */
 export const FIN_CATEGORIAS: Record<'receita' | 'despesa', { cat: string; subs: string[] }[]> = {
@@ -218,13 +183,6 @@ export const patients: Patient[] = [
 
 /* ---------- Ficha Sofia ---------- */
 
-export const sofiaAlerts = [
-  'Alergia a penicilina',
-  'Asma — broncodilatador (salbutamol)',
-  'Comportamento: Frankl 3 (positivo)',
-  'Sucção digital',
-]
-
 export interface PatientTab { slug: string; label: string }
 
 export const pediatricTabs: PatientTab[] = [
@@ -264,17 +222,6 @@ export const adultoTabs: PatientTab[] = [
 
 export const tabsFor = (perfil?: Perfil) => (perfil === 'estetico' ? esteticoTabs : perfil === 'adulto' ? adultoTabs : pediatricTabs)
 
-// compat: usado por telas antigas
-export const patientTabs = pediatricTabs
-
-export const quickStats: { k: string; v: string; hl?: boolean }[] = [
-  { k: 'Idade', v: '8a 4m' },
-  { k: 'Convênio', v: 'Particular' },
-  { k: 'Responsável', v: 'Ana Paula · mãe' },
-  { k: 'Última visita', v: '12/03/2026' },
-  { k: 'Próximo retorno', v: '12/09/2026', hl: true },
-]
-
 /* ---------- Odontograma ---------- */
 
 export type ToothState = 'higido' | 'cariado' | 'restaurado' | 'selante' | 'ausente' | 'erupcao' | 'extraido'
@@ -307,86 +254,15 @@ export const arches = {
   loL: arch([31, 32, 73, 74, 75, 36], ['higido', 'erupcao', 'higido', 'restaurado', 'cariado', 'higido']),
 }
 
-export const deciduousArches = {
-  dUR: arch([55, 54, 53, 52, 51], ['higido', 'higido', 'higido', 'higido', 'higido']),
-  dUL: arch([61, 62, 63, 64, 65], ['higido', 'higido', 'higido', 'cariado', 'higido']),
-  dLR: arch([85, 84, 83, 82, 81], ['selante', 'higido', 'higido', 'higido', 'higido']),
-  dLL: arch([71, 72, 73, 74, 75], ['higido', 'higido', 'higido', 'restaurado', 'higido']),
-}
-
-export interface ToothDetail {
-  title: string
-  issue: string
-  last: string
-  rows: { k: string; v: string }[]
-}
-
-export const toothDetails: Record<number, ToothDetail> = {
-  64: {
-    title: '64 · 1º molar decíduo',
-    issue: 'Cárie oclusal',
-    last: '12/03/2026',
-    rows: [
-      { k: 'Dentista', v: 'Dra. Gabriela Lorenzi' },
-      { k: 'Face afetada', v: 'Oclusal (O)' },
-      { k: 'Conduta', v: 'Restauração em resina' },
-      { k: 'Prioridade', v: 'Alta' },
-      { k: 'Escala Frankl', v: '3 — Positivo' },
-    ],
-  },
-}
-
-export const recentToothItems = [
-  { tooth: 'Dente 75', issue: 'Cárie mésio-oclusal', date: '03/12/2025' },
-  { tooth: 'Dente 74', issue: 'Restauração em resina', date: '14/01/2026' },
-  { tooth: 'Dente 85', issue: 'Selante', date: '20/09/2025' },
-]
-
-export const condChart = [
-  { label: 'Cárie', pct: 12, color: '#d93a3f' },
-  { label: 'Selante', pct: 10, color: '#3fc7bf' },
-  { label: 'Em erupção', pct: 7, color: '#ef9ec4' },
-  { label: 'Restauração', pct: 4, color: '#3b82f6' },
-  { label: 'Ausente', pct: 3, color: 'var(--muted)' },
-  { label: 'Extraído', pct: 3, color: '#93c5fd' },
-]
-
 /* ---------- Anamnese ---------- */
 
 export type Tone = 'ok' | 'observar' | 'alerta'
-export const TONE: Record<Tone, { color: string; label: string }> = {
-  ok: { color: '#16a34a', label: 'Normal' },
-  observar: { color: '#d97706', label: 'Observar' },
-  alerta: { color: '#dc2626', label: 'Atenção' },
-}
 
 export const habitos: { k: string; v: string; tone: Tone }[] = [
   { k: 'Chupeta', v: 'Sim — até os 3 anos', tone: 'observar' },
   { k: 'Sucção digital', v: 'Sim — hábito atual', tone: 'alerta' },
   { k: 'Bruxismo', v: 'Relato de ranger noturno', tone: 'observar' },
   { k: 'Respiração bucal', v: 'Não relatada', tone: 'ok' },
-]
-
-export const gestacional = [
-  { k: 'Tipo de parto', v: 'Cesária' },
-  { k: 'Idade gestacional', v: '39 semanas' },
-  { k: 'Intercorrências na gestação', v: 'Nenhuma' },
-  { k: 'Amamentação', v: 'Materna exclusiva até 6m' },
-  { k: 'Uso de mamadeira', v: 'Sim — até os 2 anos' },
-]
-
-export const saudeGeral: { k: string; v: string; alert?: boolean }[] = [
-  { k: 'Alergias', v: 'Penicilina', alert: true },
-  { k: 'Condições sistêmicas', v: 'Asma', alert: true },
-  { k: 'Medicação contínua', v: 'Salbutamol (em crise)' },
-  { k: 'Cirurgias / internações', v: 'Não' },
-  { k: 'Vacinação', v: 'Em dia' },
-]
-
-export const alimentar = [
-  { k: 'Consumo de açúcar', v: 'Moderado — 2x/dia' },
-  { k: 'Escovação', v: '2x/dia com supervisão' },
-  { k: 'Uso de fio dental', v: 'Ocasional' },
 ]
 
 /* ---------- Histórico ---------- */
@@ -451,23 +327,6 @@ export const parcelas: { resp: string; ref: string; venc: string; val: string; s
   { resp: 'Marcos Pires', ref: 'Isabela · Plano #199 (1/4)', venc: vencEm(-116), val: 'R$ 300,00', status: 'pago' },
 ]
 
-export const chartBars = [
-  { m: 'Jan', h: 96 },
-  { m: 'Fev', h: 120 },
-  { m: 'Mar', h: 108 },
-  { m: 'Abr', h: 134 },
-  { m: 'Mai', h: 118 },
-  { m: 'Jun', h: 142 },
-  { m: 'Jul', h: 150 },
-]
-
-export const pagamentos = [
-  { label: 'Pix', pct: 46, color: 'var(--primary)' },
-  { label: 'Cartão de crédito', pct: 34, color: '#6d8bff' },
-  { label: 'Dinheiro', pct: 12, color: '#a9c0ff' },
-  { label: 'Boleto', pct: 8, color: 'var(--primary-border)' },
-]
-
 /* ---------- CRM ---------- */
 
 export const funil = [
@@ -490,7 +349,7 @@ export const reguaPediatrico: ReguaRule[] = [
 ]
 
 export const reguaEstetico: ReguaRule[] = [
-  { id: 'est_lembrete48', title: 'Lembrete de consulta', when: '48h antes da sessão', on: true },
+  { id: 'est_lembrete48', title: 'Lembrete de consulta', when: '24h antes da sessão', on: true },
   { id: 'est_retoque', title: 'Lembrete de retoque', when: '~4 meses após aplicação', on: true },
   { id: 'est_aniversario', title: 'Aniversário do paciente', when: 'no dia · 09:00', on: true },
   { id: 'est_reativacao', title: 'Reativação de inativos', when: '8 meses sem retorno', on: false },
@@ -503,8 +362,6 @@ export const reguaAdulto: ReguaRule[] = [
   { id: 'adt_aniversario', title: 'Aniversário do paciente', when: 'no dia · 09:00', on: true },
   { id: 'adt_retorno6m', title: 'Retorno / manutenção', when: '6 meses após a visita', on: true },
 ]
-
-export const reguaInicial = reguaPediatrico
 
 /* ---------- Configurações ---------- */
 
@@ -580,17 +437,6 @@ export const estoque: EstoqueRow[] = INVENTARIO.map((i) => ({
   ent: INVENTARIO_DATA,
   minAuto: true,
 }))
-
-export const procChips = ['Restauração em resina', 'Profilaxia + flúor', 'Selante', 'Pulpotomia', 'Extração']
-
-export const procBOM = [
-  { item: 'Anestésico lidocaína 2%', qtd: '1 tubete' },
-  { item: 'Resina composta A2', qtd: '1 aplicação' },
-  { item: 'Ácido fosfórico 37%', qtd: '1 aplicação' },
-  { item: 'Luvas de procedimento M', qtd: '1 par' },
-  { item: 'Sugador descartável', qtd: '1 un' },
-  { item: 'Rolo de algodão', qtd: '2 un' },
-]
 
 export const movimentacoes: { tipo: string; desc: string; when: string; delta: string; kind: 'entrada' | 'saida' }[] = [
   { tipo: 'Saída', desc: 'Restauração (74) · Bento Correia', when: 'hoje 10:40', delta: '−6 itens', kind: 'saida' },

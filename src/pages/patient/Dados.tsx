@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { Field, TextInput, FieldRow, Select } from '../../components/Field'
 import { Menu } from '../../components/Menu'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
-import { useCollection, usePatientId } from '../../lib/useCollection'
+import { useCollection, usePatient } from '../../lib/useCollection'
 import { useStore } from '../../store'
 import { idadeLabel, TREAT_STATUS, ORIGENS, type Patient, type Perfil, type TreatStatus } from '../../data'
 import { DateField } from '../../components/DateField'
@@ -28,17 +28,24 @@ interface Responsavel {
 
 export default function Dados() {
   const { toast } = useToast()
-  const patientId = usePatientId()
+  const { patient: p, patientId } = usePatient()
   const { patients, updatePatient } = useStore()
-  const { id } = useParams()
-  const p = patients.find((x) => x.name === (id ? decodeURIComponent(id) : ''))
   const est = (p?.perfil ?? 'pediatrico') !== 'pediatrico' // adulto e estético: paciente sem responsável
   const [editP, setEditP] = useState<Patient | null>(null)
-  const saveCadastro = () => {
+  const [salvando, setSalvando] = useState(false)
+  const saveCadastro = async () => {
     if (!editP || !p) return
     if (!validCpf(editP.cpf ?? '') || !validCpf(editP.respCpf ?? '')) return toast('CPF inválido.', 'error')
     if (!validPhone(editP.phone ?? '') || !validPhone(editP.respPhone ?? '')) return toast('Telefone incompleto.', 'error')
-    updatePatient(p.name, editP)
+    const novoNome = (editP.name ?? '').trim()
+    if (!novoNome) return toast('Informe o nome do paciente.', 'error')
+    if (novoNome.toLowerCase() !== p.name.toLowerCase() && patients.some((x) => x._id !== p._id && x.name.toLowerCase() === novoNome.toLowerCase())) {
+      return toast(`Já existe um paciente chamado ${novoNome}.`, 'error')
+    }
+    setSalvando(true)
+    const ok = await updatePatient(p._id, { ...editP, name: novoNome })
+    setSalvando(false)
+    if (!ok) return
     setEditP(null)
     toast('Cadastro atualizado.')
   }
@@ -57,6 +64,7 @@ export default function Dados() {
   const seedResp: Responsavel[] = p && !est
     ? [{ id: 'seed-main', name: (p.resp || '').split('·')[0].trim() || 'Responsável', rel: (p.resp || '').split('·')[1]?.trim() || 'Responsável', phone: p.respPhone ?? '', cpf: p.respCpf ?? '', main: true }]
     : []
+  const [removendo, setRemovendo] = useState<Responsavel | null>(null)
   const { rows: resp, setRows, add, save, remove } = useCollection<Responsavel>(
     'responsaveis',
     patientId,
@@ -107,7 +115,7 @@ export default function Dados() {
                   <Menu items={[
                     { label: 'Editar', onClick: () => setEdit(r) },
                     { label: 'Tornar principal', disabled: r.main, onClick: () => makeMain(r.id) },
-                    { label: 'Remover', danger: true, disabled: r.main, onClick: () => { remove(r.id); toast('Responsável removido.') } },
+                    { label: 'Remover', danger: true, disabled: r.main, onClick: () => setRemovendo(r) },
                   ]} />
                 </div>
               ))}
@@ -127,7 +135,14 @@ export default function Dados() {
       </Modal>
 
       <Modal open={!!edit} onClose={() => setEdit(null)} title="Editar responsável" width={420}
-        footer={<><Button variant="outline" onClick={() => setEdit(null)}>Cancelar</Button><Button onClick={() => { if (!edit) return; if (!validCpf(edit.cpf)) return toast('CPF inválido.', 'error'); if (!validPhone(edit.phone)) return toast('Telefone incompleto.', 'error'); save(edit); setEdit(null); toast('Responsável atualizado.') }}>Salvar</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setEdit(null)}>Cancelar</Button><Button onClick={async () => {
+          if (!edit) return
+          if (!validCpf(edit.cpf)) return toast('CPF inválido.', 'error')
+          if (!validPhone(edit.phone)) return toast('Telefone incompleto.', 'error')
+          setEdit(null)
+          const ok = await save(edit)
+          toast(ok ? 'Responsável atualizado.' : 'Não foi possível salvar o responsável.', ok ? 'success' : 'error')
+        }}>Salvar</Button></>}>
         {edit && (
           <>
             <Field label="Nome"><TextInput value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
@@ -142,7 +157,7 @@ export default function Dados() {
 
       {/* Editar cadastro do paciente */}
       <Modal open={!!editP} onClose={() => setEditP(null)} title="Editar cadastro" subtitle={editP?.name}
-        footer={<><Button variant="outline" onClick={() => setEditP(null)}>Cancelar</Button><Button onClick={saveCadastro}>Salvar</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setEditP(null)}>Cancelar</Button><Button loading={salvando} onClick={saveCadastro}>Salvar</Button></>}>
         {editP && (
           <>
             <FieldRow>
@@ -178,6 +193,10 @@ export default function Dados() {
           </>
         )}
       </Modal>
+
+      <ConfirmDialog open={!!removendo} onClose={() => setRemovendo(null)} confirmLabel="Remover"
+        onConfirm={async () => { if (removendo && await remove(removendo.id)) toast('Responsável removido.') }}
+        title="Remover responsável" message={`Remover ${removendo?.name ?? ''} dos responsáveis deste paciente?`} />
     </div>
   )
 }

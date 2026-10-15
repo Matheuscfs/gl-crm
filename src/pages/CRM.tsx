@@ -10,7 +10,13 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'
 import { useStore, type LeadCard } from '../store'
 import { supabase } from '../lib/supabase'
-import { reguaPediatrico, reguaEstetico, reguaAdulto, ORIGENS } from '../data'
+import { reguaPediatrico, reguaEstetico, reguaAdulto, ORIGENS, type ReguaRule } from '../data'
+import { addDays, todayISO, parseISO } from '../lib/dates'
+import { useAutomacao } from '../lib/automacao'
+
+const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
+/** "16/10 (sex)" — dia da consulta na prévia da confirmação, `dias` depois de hoje. */
+const rotuloDia = (dias: number) => { const iso = addDays(todayISO(), dias); return `${iso.slice(8, 10)}/${iso.slice(5, 7)} (${DIAS_CURTOS[parseISO(iso).getDay()]})` }
 import { useEffect } from 'react'
 import CrcBoard from './crm/CrcBoard'
 
@@ -75,6 +81,14 @@ function StageColumn({ index, stage, count, children }: { index: number; stage: 
 
 export default function CRM() {
   const { funil, addLead, updateLead, deleteLead, moveLead } = useStore()
+  const automacao = useAutomacao()
+  // a prévia segue a antecedência configurada em Configurações → Automação
+  const horasAntes = automacao.config.confirmacao_horas
+  const diasAntes = Math.max(1, Math.round(horasAntes / 24))
+  const quandoPrevia = diasAntes === 1 ? `amanhã, ${rotuloDia(1)}` : rotuloDia(diasAntes)
+  // o servidor só dispara a confirmação na antecedência configurada, aniversário, retorno e retoque;
+  // o resto continua sendo lembrete para a recepção enviar
+  const disparaSozinho = (r: ReguaRule) => automacao.ativo && (/lembrete/.test(r.id) ? r.when.startsWith(`${horasAntes}h`) : !/reativacao/.test(r.id))
   const { toast } = useToast()
   const [reguaPerfil, setReguaPerfil] = useState<'pediatrico' | 'estetico' | 'adulto'>('pediatrico')
   const [reguaPed, setReguaPed] = useState(reguaPediatrico)
@@ -124,16 +138,16 @@ export default function CRM() {
     if (supabase) supabase.from('regua_rules').upsert({ rule_id: id, title: cur.title, whn: cur.when, is_on: on, perfil: reguaPerfil }, { onConflict: 'rule_id' }).then(({ error }) => { if (error) console.error('[supabase] regua', error.message) })
   }
 
-  const submitLead = () => {
+  const submitLead = async () => {
     if (!form.name.trim()) return toast('Informe o nome do lead.', 'error')
+    if (saving) return
     setSaving(true)
-    setTimeout(() => {
-      addLead(form.name.trim(), form.resp.trim() || '—', form.info.trim() || 'novo contato', form.origem)
-      setSaving(false)
-      setOpen(false)
-      setForm(EMPTY_LEAD)
-      toast('Lead adicionado ao funil.')
-    }, 400)
+    const ok = await addLead(form.name.trim(), form.resp.trim() || '—', form.info.trim() || 'novo contato', form.origem)
+    setSaving(false)
+    if (!ok) return
+    setOpen(false)
+    setForm(EMPTY_LEAD)
+    toast('Lead adicionado ao funil.')
   }
 
   const openLead = (c: LeadCard) => {
@@ -212,13 +226,19 @@ export default function CRM() {
                 <button className={`seg-item${reguaPerfil === 'adulto' ? ' active' : ''}`} onClick={() => setReguaPerfil('adulto')}>Adulto</button>
               </div>
             </div>
+            {/* sem a automação ligada, nada sai sozinho: a tela diz isso em vez de prometer */}
+            <p className={`regua-modo${automacao.ativo ? ' auto' : ''}`}>
+              {automacao.ativo
+                ? 'Envio automático ligado: as mensagens marcadas saem pelo WhatsApp oficial da clínica no momento indicado.'
+                : 'Envio manual: o sistema monta a mensagem e alguém envia pelo botão de WhatsApp (Início, Agenda, Financeiro). Para disparar sozinho, ligue em Configurações → Automação.'}
+            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {regua.map((r) => (
-                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', borderRadius: 12, border: `1px solid ${r.on ? 'var(--primary-border)' : 'var(--line)'}`, background: r.on ? 'var(--primary-bg)' : '#fff' }}>
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', borderRadius: 12, border: `1px solid ${r.on ? 'var(--primary-border)' : 'var(--line)'}`, background: r.on ? 'var(--primary-bg)' : 'var(--surface)' }}>
                   <button className={`switch${r.on ? ' on' : ''}`} onClick={() => toggle(r.id)} aria-pressed={r.on}><span className="switch-knob" /></button>
                   <div style={{ flex: 1 }}>
                     <div style={{ font: "700 13px var(--font)", color: 'var(--ink)' }}>{r.title}</div>
-                    <div style={{ font: "600 11.5px var(--font)", color: 'var(--muted)' }}>Dispara {r.when}</div>
+                    <div style={{ font: "600 11.5px var(--font)", color: 'var(--muted)' }}>{disparaSozinho(r) ? 'Dispara' : 'Lembrete'} {r.when}</div>
                   </div>
                   <button className="chip" onClick={() => openMsg(r.id, r.title, r.when)} style={{ background: 'transparent', font: "700 11.5px var(--font)", color: 'var(--primary-dark)', padding: '4px 6px', borderRadius: 8 }}>Editar mensagem</button>
                 </div>
@@ -237,10 +257,10 @@ export default function CRM() {
                 </div>
               </div>
               <div style={{ padding: '18px 14px', minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: 10 }}>
-                <div style={{ alignSelf: 'center', background: 'var(--surface)', color: 'var(--slate)', font: "700 10px var(--font)", padding: '4px 11px', borderRadius: 8 }}>Lembrete 48h antes</div>
+                <div style={{ alignSelf: 'center', background: 'var(--surface)', color: 'var(--slate)', font: "700 10px var(--font)", padding: '4px 11px', borderRadius: 8 }}>Lembrete {horasAntes}h antes</div>
                 <div style={{ alignSelf: 'flex-end', maxWidth: '82%', background: '#d9f2ec', borderRadius: '14px 14px 4px 14px', padding: '10px 13px', boxShadow: '0 1px 1px rgba(0,0,0,.06)' }}>
                   <div style={{ font: "500 12.5px/1.5 var(--font)", color: 'var(--ink)' }}>
-                    Oi, Ana Paula! 😊 Passando para lembrar que a <b>Sofia</b> tem consulta com a Dra. Gabriela Lorenzi <b>amanhã, 19/07 (sex) às 09:00</b>. Podemos confirmar? Responda <b>SIM</b> para confirmar ou <b>REMARCAR</b> se precisar mudar. 🦷
+                    Oi, [responsável]! 😊 Passando para lembrar que [paciente] tem consulta com a Dra. Gabriela Lorenzi <b>{quandoPrevia} às 09:00</b>. Podemos confirmar? Responda <b>1</b> para confirmar ou <b>2</b> para remarcar. 🦷
                   </div>
                   <div style={{ textAlign: 'right', font: "600 10px var(--font)", color: '#7fb8ac', marginTop: 4 }}>08:32 ✓✓</div>
                 </div>
@@ -261,7 +281,7 @@ export default function CRM() {
 
       {/* Editar lead */}
       <Modal open={!!edit} onClose={() => setEdit(null)} title="Editar lead" width={420}
-        footer={<><Button variant="ghost" className="btn-danger" onClick={() => { if (edit) { setConfirmLead(edit); setEdit(null) } }}>Excluir</Button><Button onClick={saveLead}>Salvar</Button></>}>
+        footer={<><Button variant="danger" onClick={() => { if (edit) { setConfirmLead(edit); setEdit(null) } }}>Excluir</Button><Button onClick={saveLead}>Salvar</Button></>}>
         {edit && (
           <>
             <Field label="Nome da criança"><TextInput value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
@@ -277,7 +297,7 @@ export default function CRM() {
       </Modal>
 
       {/* Editar modelo de mensagem */}
-      <Modal open={!!msg} onClose={() => setMsg(null)} title={msg?.title ?? ''} subtitle={`Dispara ${msg?.when ?? ''}`} width={460}
+      <Modal open={!!msg} onClose={() => setMsg(null)} title={msg?.title ?? ''} subtitle={`${automacao.ativo ? 'Dispara' : 'Lembrete'} ${msg?.when ?? ''}`} width={460}
         footer={<><Button variant="outline" onClick={() => setMsg(null)}>Cancelar</Button><Button onClick={saveMsg}>Salvar modelo</Button></>}>
         <Field label="Mensagem (WhatsApp)"><Textarea value={msgText} onChange={(e) => setMsgText(e.target.value)} /></Field>
         <div style={{ font: "600 11px var(--font)", color: 'var(--muted)' }}>Variáveis: {'{crianca}'}, {'{responsavel}'}, {'{data}'}.</div>

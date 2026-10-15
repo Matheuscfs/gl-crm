@@ -216,7 +216,7 @@ export function SimulationEditor({ src, onClose, onSave }: { src: string; onClos
           <div style={{ font: "800 13px var(--font)", color: 'var(--ink)', marginBottom: 10 }}>Ferramenta</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
             {TOOLS.map((t) => (
-              <button key={t.key} onClick={() => setTool(t.key)} className="chip" style={{ flex: '1 1 46%', padding: '8px 0', borderRadius: 9, font: "700 11.5px var(--font)", border: `1px solid ${tool === t.key ? 'var(--primary-border)' : 'var(--border-strong)'}`, background: tool === t.key ? 'var(--primary-bg)' : '#fff', color: tool === t.key ? 'var(--primary-dark)' : 'var(--slate)' }}>{t.label}</button>
+              <button key={t.key} onClick={() => setTool(t.key)} className="chip" style={{ flex: '1 1 46%', padding: '8px 0', borderRadius: 9, font: "700 11.5px var(--font)", border: `1px solid ${tool === t.key ? 'var(--primary-border)' : 'var(--border-strong)'}`, background: tool === t.key ? 'var(--primary-bg)' : 'var(--surface)', color: tool === t.key ? 'var(--primary-dark)' : 'var(--slate)' }}>{t.label}</button>
             ))}
           </div>
           <div style={{ marginBottom: 12 }}>

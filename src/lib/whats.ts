@@ -8,17 +8,27 @@ export function waLink(phone: string | undefined, msg: string): string | null {
   return `https://wa.me/${full}?text=${encodeURIComponent(msg)}`
 }
 
-/** Casa o nome curto da agenda ("Helena S.") com o cadastro completo do paciente. */
-export function findPatientByName(patients: Patient[], name: string): Patient | undefined {
+/**
+ * Casa o nome curto da agenda ("Helena S.") com o cadastro completo do paciente.
+ * Só devolve quando há um único candidato: com duas "Helena" o link do WhatsApp poderia
+ * ir para a família errada, então nesse caso não casa (a tela pede para abrir a ficha).
+ */
+export function findPatientByName<P extends Patient>(patients: P[], name: string): P | undefined {
   const norm = name.trim().toLowerCase()
   if (!norm) return undefined
-  const exact = patients.find((x) => x.name.toLowerCase() === norm)
-  if (exact) return exact
+  const exatos = patients.filter((x) => x.name.trim().toLowerCase() === norm)
+  if (exatos.length) return exatos.length === 1 ? exatos[0] : undefined
   const toks = norm.replace(/\./g, '').split(/\s+/)
-  return patients.find((x) => {
+  const candidatos = patients.filter((x) => {
     const xt = x.name.toLowerCase().split(/\s+/)
     return xt[0] === toks[0] && (!toks[1] || (xt[1] ?? '').startsWith(toks[1]))
   })
+  return candidatos.length === 1 ? candidatos[0] : undefined
+}
+
+/** Paciente de um agendamento: pelo id gravado no agendamento; os antigos só têm o nome. */
+export function findPatientForEvent<P extends Patient>(patients: P[], ev: { patientId?: string; child: string }): P | undefined {
+  return (ev.patientId ? patients.find((p) => p._id === ev.patientId) : undefined) ?? findPatientByName(patients, ev.child)
 }
 
 /** Telefone preferido para contato: responsável (pediátrico) ou o próprio paciente. */

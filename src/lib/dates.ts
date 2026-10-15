@@ -125,3 +125,12 @@ export function saudacao(d: Date = new Date()): string {
 export function diffDays(fromISO: string, toISO: string): number {
   return Math.round((parseISO(toISO).getTime() - parseISO(fromISO).getTime()) / 86400000)
 }
+
+/** Idade em anos completos (null sem data de nascimento válida). */
+export function idadeAnos(birthISO?: string | null, hoje: Date = new Date()): number | null {
+  if (!birthISO || !/^\d{4}-\d{2}-\d{2}/.test(birthISO)) return null
+  const [a, m, d] = birthISO.slice(0, 10).split('-').map(Number)
+  let anos = hoje.getFullYear() - a
+  if (hoje.getMonth() + 1 < m || (hoje.getMonth() + 1 === m && hoje.getDate() < d)) anos--
+  return anos >= 0 ? anos : null
+}

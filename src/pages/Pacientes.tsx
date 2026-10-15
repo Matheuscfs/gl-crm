@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '../icons'
 import { Button } from '../components/Button'
@@ -8,7 +8,7 @@ import { Menu, Dropdown } from '../components/Menu'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { EmptyState, SkeletonRows } from '../components/States'
 import { useToast } from '../components/Toast'
-import { useStore } from '../store'
+import { useStore, patientPath } from '../store'
 import { exportCsv } from '../lib/exportCsv'
 import { TREAT_STATUS, PERFIL, ORIGENS, idadeLabel, fmtHour, type TreatStatus, type Patient, type Perfil } from '../data'
 import { DateField } from '../components/DateField'
@@ -17,7 +17,7 @@ import { PatientPhoto } from '../components/PatientPhoto'
 import { useMediaQuery } from '../lib/useTablet'
 import { diasDeRetornoVencido } from '../lib/retornos'
 import { todayISO, addDays, parseISO, parseBr, diffDays, brDate } from '../lib/dates'
-import { findPatientByName, waLink, contactPhone } from '../lib/whats'
+import { findPatientForEvent, waLink, contactPhone } from '../lib/whats'
 import { msgRetorno, msgAniversario } from '../lib/mensagens'
 
 const AGE_OPTS = ['Todas as idades', '0–3 anos', '4–6 anos', '7–9 anos', '10+ anos']
@@ -57,7 +57,7 @@ const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um :
 
 export default function Pacientes() {
   const navigate = useNavigate()
-  const { patients, events, addPatient, updatePatient, deletePatient } = useStore()
+  const { patients, events, addPatient, updatePatient, deletePatient, carga } = useStore()
   const { toast } = useToast()
   const [query, setQuery] = useState('')
   // ?filtro=vencidos vem do atalho "Retornos vencidos" do menu lateral
@@ -104,12 +104,8 @@ export default function Pacientes() {
   const [editingOrig, setEditingOrig] = useState('')
   const abrirEdicao = (p: Patient) => { setEditing(p); setEditingOrig(p.name) }
   const [confirmDel, setConfirmDel] = useState<Patient | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 450)
-    return () => clearTimeout(t)
-  }, [])
+  // esqueleto enquanto o banco carrega de verdade (antes era um atraso fixo de 450 ms)
+  const loading = carga === 'carregando'
 
   const hoje = todayISO()
   const amanha = addDays(hoje, 1)
@@ -120,7 +116,7 @@ export default function Pacientes() {
     const m = new Map<string, { date: string; start: number }>()
     events.forEach((e) => {
       if (e.date < hoje || e.status === 'desmarcado' || e.status === 'faltou' || e.status === 'concluido') return
-      const p = findPatientByName(patients, e.child)
+      const p = findPatientForEvent(patients, e)
       if (!p) return
       const atual = m.get(p.name)
       if (!atual || e.date < atual.date || (e.date === atual.date && e.start < atual.start)) m.set(p.name, { date: e.date, start: e.start })
@@ -181,9 +177,9 @@ export default function Pacientes() {
     if (!link) return toast(`Sem telefone cadastrado para ${p.name}. Complete o cadastro.`, 'error')
     window.open(link, '_blank', 'noopener')
   }
-  const abrirFicha = (p: Patient) => navigate(`/pacientes/${encodeURIComponent(p.name)}/odontograma`)
+  const abrirFicha = (p: Patient) => navigate(patientPath(p, 'odontograma'))
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.name.trim()) return toast(form.perfil === 'pediatrico' ? 'Informe o nome da criança.' : 'Informe o nome do paciente.', 'error')
     if (!form.birthdate) return toast('Informe a data de nascimento.', 'error')
     if (!validCpf(form.cpf)) return toast('CPF inválido.', 'error')
@@ -194,22 +190,22 @@ export default function Pacientes() {
       if (!validPhone(r.phone)) return toast(`Telefone de ${r.name.trim()} incompleto.`, 'error')
     }
     const r0 = filled[0]
+    if (saving) return
     setSaving(true)
-    setTimeout(() => {
-      addPatient({
+    const novo = await addPatient({
         name: form.name.trim(), age: idadeLabel(form.birthdate) || '—',
         resp: r0 ? `${r0.name.trim()} · ${r0.rel.toLowerCase()}` : '—', last: '—', next: 'a agendar', tipo: form.tipo, status: form.status, perfil: form.perfil,
         birthdate: form.birthdate, sex: form.sex, cpf: form.cpf, phone: form.phone, respCpf: r0?.cpf ?? '', respPhone: r0?.phone ?? '', prontuario: form.prontuario, origem: form.origem,
       }, filled.map((r, i) => ({ name: r.name.trim(), rel: r.rel, phone: r.phone, cpf: r.cpf, main: i === 0 })))
-      setSaving(false)
-      setOpen(false)
-      setForm(EMPTY)
-      setResps([{ ...EMPTY_RESP }])
-      toast('Paciente cadastrado com sucesso.')
-    }, 400)
+    setSaving(false)
+    if (!novo) return // o banco recusou: o aviso já apareceu e o formulário continua preenchido
+    setOpen(false)
+    setForm(EMPTY)
+    setResps([{ ...EMPTY_RESP }])
+    toast('Paciente cadastrado com sucesso.')
   }
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editing) return
     if (!editing.name.trim()) return toast('Informe o nome do paciente.', 'error')
     if (!validCpf(editing.cpf ?? '')) return toast('CPF inválido.', 'error')
@@ -219,7 +215,12 @@ export default function Pacientes() {
     if (novoNome !== editingOrig && patients.some((p) => p.name.toLowerCase() === novoNome.toLowerCase())) {
       return toast(`Já existe um paciente chamado ${novoNome}.`, 'error')
     }
-    updatePatient(editingOrig, { ...editing, name: novoNome })
+    const alvo = patients.find((p) => p.name === editingOrig)
+    if (!alvo) return
+    setSaving(true)
+    const ok = await updatePatient(alvo._id, { ...editing, name: novoNome })
+    setSaving(false)
+    if (!ok) return
     setEditing(null)
     toast('Paciente atualizado.')
   }
@@ -460,7 +461,7 @@ export default function Pacientes() {
         {/* progresso */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
           {stepsList.map((s, i) => (
-            <div key={s} style={{ flex: 1, height: 4, borderRadius: 4, background: i <= step ? 'var(--primary)' : '#e5eaf3', transition: 'background .2s ease' }} title={s} />
+            <div key={s} style={{ flex: 1, height: 4, borderRadius: 4, background: i <= step ? 'var(--primary)' : 'var(--line)', transition: 'background .2s ease' }} title={s} />
           ))}
         </div>
 
@@ -514,7 +515,7 @@ export default function Pacientes() {
               <Field label="Status do tratamento"><Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as TreatStatus })}>{Object.entries(TREAT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</Select></Field>
             </FieldRow>
             <Field label="Como conheceu a clínica"><Select value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })}><option value="">—</option>{ORIGENS.map((o) => <option key={o} value={o}>{o}</option>)}</Select></Field>
-            <div style={{ padding: '11px 14px', borderRadius: 10, background: '#f4f6fb', border: '1px solid var(--line)', font: "600 12px/1.6 var(--font)", color: 'var(--slate)' }}>
+            <div style={{ padding: '11px 14px', borderRadius: 10, background: 'var(--bg-soft)', border: '1px solid var(--line)', font: "600 12px/1.6 var(--font)", color: 'var(--slate)' }}>
               <b style={{ color: 'var(--ink)' }}>{form.name || '—'}</b> · {form.perfil === 'pediatrico' ? 'Pediátrico' : form.perfil === 'estetico' ? 'Estético' : 'Adulto'} · {form.tipo}
               {form.birthdate ? ` · ${idadeLabel(form.birthdate)}` : ''}
               {form.perfil === 'pediatrico' && resps[0]?.name.trim() ? ` · Resp.: ${resps[0].name.trim()}` : ''}
@@ -561,7 +562,7 @@ export default function Pacientes() {
         )}
       </Modal>
 
-      <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={() => { if (confirmDel) { deletePatient(confirmDel.name); toast('Paciente excluído.') } }}
+      <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={async () => { if (!confirmDel) return; const alvo = patients.find((p) => p.name === confirmDel.name); if (alvo && await deletePatient(alvo._id)) toast('Paciente excluído.') }}
         title="Excluir paciente" message={`Excluir ${confirmDel?.name ?? ''}? Todos os dados da ficha serão removidos.`} />
     </>
   )

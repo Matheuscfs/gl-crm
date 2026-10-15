@@ -9,11 +9,13 @@ import { useToast } from '../../components/Toast'
 import { SuggestInput } from '../../components/SuggestInput'
 import { DateField } from '../../components/DateField'
 import { todayISO, brDate } from '../../lib/dates'
-import { useParams } from 'react-router-dom'
-import { useCollection, usePatientId } from '../../lib/useCollection'
+import { esquema } from '../../lib/sync'
+import { supabase } from '../../lib/supabase'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { useCollection, usePatient } from '../../lib/useCollection'
 import { useStore, matchFicha } from '../../store'
 import { fmtMoney } from '../../lib/fmt'
-import { historico as seedHist, FRANKL, isSeedPatient } from '../../data'
+import { historico as seedHist, FRANKL } from '../../data'
 import { BRAND } from '../../brand'
 
 interface Treat {
@@ -23,44 +25,63 @@ interface Treat {
   prof: string
   frankl: number
   note: string
+  anuladaEm?: string
+  anuladaMotivo?: string
 }
 const SEED: Treat[] = seedHist.map((h, i) => ({ id: `seed-h${i}`, date: h.date, proc: h.proc, prof: h.prof, frankl: h.frankl, note: h.note }))
 const EMPTY: Omit<Treat, 'id'> = { date: todayISO(), proc: '', prof: BRAND.dentist, frankl: 3, note: '' }
 
 export default function Historico() {
   const { toast } = useToast()
-  const patientId = usePatientId()
+  const { patient: atual, patientId, demo } = usePatient()
   const { baixaProcedimento, gerarCobranca, procedimentos } = useStore()
-  const { id } = useParams()
-  const fullName = id ? decodeURIComponent(id) : ''
+  const fullName = atual?.name ?? ''
   const patientName = fullName.split(' ')[0] || 'paciente'
   const [autoBaixa, setAutoBaixa] = useState(true)
   const [autoCobranca, setAutoCobranca] = useState(true)
-  const { rows, add, remove } = useCollection<Treat>(
+  const { rows, add, save, remove } = useCollection<Treat>(
     'treatments',
     patientId,
-    (r) => ({ id: r.id as string, date: (r.treat_date as string) ?? '', proc: (r.proc as string) ?? '', prof: (r.prof as string) ?? '', frankl: (r.frankl as number) ?? 0, note: (r.note as string) ?? '' }),
-    (t) => ({ treat_date: t.date, proc: t.proc, prof: t.prof, frankl: t.frankl, note: t.note }),
-    isSeedPatient(fullName) ? SEED : [], // tratamentos demo só nos pacientes de demonstração
+    (r) => ({ id: r.id as string, date: (r.treat_date as string) ?? '', proc: (r.proc as string) ?? '', prof: (r.prof as string) ?? '', frankl: (r.frankl as number) ?? 0, note: (r.note as string) ?? '', anuladaEm: (r.anulada_em as string) ?? undefined, anuladaMotivo: (r.anulada_motivo as string) ?? undefined }),
+    (t) => ({ treat_date: t.date, proc: t.proc, prof: t.prof, frankl: t.frankl, note: t.note, ...(esquema.v26 ? { anulada_em: t.anuladaEm, anulada_motivo: t.anuladaMotivo } : {}) }),
+    demo ? SEED : [], // tratamentos demo só nos pacientes de demonstração
   )
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState(EMPTY)
+  // registro clínico não se apaga: anula-se com motivo (sem a migração 0026, exclui com confirmação)
+  const podeAnular = !supabase || esquema.v26
+  const [anulando, setAnulando] = useState<Treat | null>(null)
+  const [motivo, setMotivo] = useState('')
+  const [confirmDel, setConfirmDel] = useState<Treat | null>(null)
+  const anular = async () => {
+    if (!anulando) return
+    if (motivo.trim().length < 5) return toast('Escreva o motivo da anulação.', 'error')
+    const ok = await save({ ...anulando, anuladaEm: new Date().toISOString(), anuladaMotivo: motivo.trim() })
+    if (!ok) return
+    setAnulando(null)
+    toast('Atendimento anulado — continua no histórico, riscado, com o motivo. A cobrança gerada (se houve) fica no Financeiro.')
+  }
 
-  const submit = () => {
+  const [salvando, setSalvando] = useState(false)
+  const submit = async () => {
+    if (salvando) return
     if (!form.proc.trim()) return toast('Informe o procedimento.', 'error')
     if (!form.date) return toast('Informe a data do atendimento.', 'error')
+    setSalvando(true)
     // o histórico armazena a data em dd/mm/aaaa; o form trabalha em ISO (DateField)
-    add({ ...form, date: brDate(form.date), frankl: Number(form.frankl) })
-    // baixa automática no estoque + cobrança no financeiro
+    const ok = await add({ ...form, date: brDate(form.date), frankl: Number(form.frankl) })
+    if (!ok) { setSalvando(false); return }
+    // baixa automática no estoque + cobrança no financeiro — só depois de o registro gravar
     const parts: string[] = []
     if (autoBaixa) {
       const consumidos = baixaProcedimento(form.proc, patientName)
       if (consumidos > 0) parts.push(`${consumidos} itens baixados do estoque`)
     }
     if (autoCobranca) {
-      const v = gerarCobranca(form.proc, fullName)
+      const v = await gerarCobranca(form.proc, atual?._id ?? fullName)
       if (v > 0) parts.push(`cobrança de ${fmtMoney(v)} gerada`)
     }
+    setSalvando(false)
     toast(parts.length ? `Atendimento registrado · ${parts.join(' · ')}.` : 'Atendimento registrado.')
     setOpen(false)
     setForm(EMPTY)
@@ -88,15 +109,18 @@ export default function Historico() {
                 <li key={h.id} className="tl-row">
                   <div className="tl-date">{h.date}</div>
                   <div className="tl-rail" aria-hidden="true"><span className="dot" />{!last && <span className="line" />}</div>
-                  <article className="panel tl-card">
+                  <article className={`panel tl-card${h.anuladaEm ? ' anulada' : ''}`}>
                     <div className="entry-head">
                       <span className="when">{h.date} ·</span>
                       <h3 style={{ margin: 0, flex: '1 1 160px', minWidth: 0, font: '500 14px var(--font)', color: 'var(--ink)' }}>{h.proc}</h3>
                       {frk && <span style={{ padding: '3px 10px', borderRadius: 20, font: '600 11px var(--font)', whiteSpace: 'nowrap', background: frk.bg, color: frk.fg }}>Frankl {frk.label}</span>}
-                      <span style={{ marginLeft: 'auto' }}><Menu items={[{ label: 'Excluir', danger: true, onClick: () => { remove(h.id); toast('Atendimento removido.') } }]} /></span>
+                      {!h.anuladaEm && <span style={{ marginLeft: 'auto' }}><Menu items={[podeAnular
+                        ? { label: 'Anular (com motivo)', danger: true, onClick: () => { setMotivo(''); setAnulando(h) } }
+                        : { label: 'Excluir', danger: true, onClick: () => setConfirmDel(h) }]} /></span>}
                     </div>
                     <div style={{ font: '400 12px var(--font)', color: 'var(--muted)', marginTop: 3 }}>{h.prof}</div>
                     {h.note && <p className="entry-text">{h.note}</p>}
+                    {h.anuladaEm && <p className="entry-anulada">Anulado em {brDate(h.anuladaEm.slice(0, 10))}: {h.anuladaMotivo}</p>}
                   </article>
                 </li>
               )
@@ -105,8 +129,17 @@ export default function Historico() {
         )}
       </div>
 
+      <Modal open={!!anulando} onClose={() => setAnulando(null)} title="Anular atendimento" subtitle={anulando ? `${anulando.date} · ${anulando.proc}` : ''} width={440}
+        footer={<><Button variant="outline" onClick={() => setAnulando(null)}>Cancelar</Button><Button variant="danger" onClick={() => void anular()}>Anular</Button></>}>
+        <p style={{ margin: 0, font: '400 13px/1.5 var(--font)', color: 'var(--text-2)' }}>O registro fica riscado na timeline, com o motivo e quem anulou.</p>
+        <Field label="Motivo"><Textarea autoFocus rows={3} value={motivo} onChange={(ev) => setMotivo(ev.target.value)} placeholder="Ex.: lançado em duplicidade." /></Field>
+      </Modal>
+      <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)}
+        onConfirm={async () => { if (confirmDel && await remove(confirmDel.id)) toast('Atendimento removido.') }}
+        title="Excluir atendimento" message={`Remover ${confirmDel?.proc ?? ''} de ${confirmDel?.date ?? ''}? A cobrança gerada (se houve) continua no Financeiro.`} />
+
       <Modal open={open} onClose={() => setOpen(false)} title="Novo atendimento" subtitle="Registro na timeline do paciente" dirty={!!(form.proc.trim() || form.note.trim())}
-        footer={<><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={submit}>Registrar</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button loading={salvando} onClick={submit}>Registrar</Button></>}>
         <FieldRow>
           <Field label="Data"><DateField value={form.date} onChange={(iso) => setForm({ ...form, date: iso })} /></Field>
           <Field label="Escala Frankl"><Select value={form.frankl} onChange={(e) => setForm({ ...form, frankl: Number(e.target.value) })}><option value={0}>Não se aplica</option>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{FRANKL[n].label}</option>)}</Select></Field>

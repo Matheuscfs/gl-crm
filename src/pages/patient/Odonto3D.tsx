@@ -384,13 +384,17 @@ export default function Odonto3D({ upper, lower, selected, onSelect, isDim }: {
       const curve = archCurve(3.05, 3.5)
       const len = curve.getLength()
       const gap = 0.05
-      const total = lista.reduce((s, t) => s + LARGURA[kindOf(t.num)] + gap, -gap)
+      const natural = lista.reduce((s, t) => s + LARGURA[kindOf(t.num)] + gap, -gap)
+      // dentição permanente completa (16 por arcada) não cabe na curva no tamanho natural: encolhe
+      const k = Math.min(1, (len * 0.97) / natural)
+      const total = natural * k
       let s = (len - total) / 2
       lista.forEach((t) => {
         const kind = kindOf(t.num)
-        const w = LARGURA[kind]
-        const u = (s + w / 2) / len
-        s += w + gap
+        const w = LARGURA[kind] // tamanho do dente (o grupo interno já é escalado por k)
+        const wk = w * k // espaço que ele ocupa na curva
+        const u = Math.min(1, Math.max(0, (s + wk / 2) / len))
+        s += wk + gap * k
         const p = curve.getPointAt(u)
         const tan = curve.getTangentAt(u)
         const g = new THREE.Group()
@@ -398,6 +402,7 @@ export default function Odonto3D({ upper, lower, selected, onSelect, isDim }: {
         g.rotation.y = -Math.atan2(tan.z, tan.x)
         const inner = new THREE.Group()
         if (superior) inner.rotation.z = Math.PI // coroa para baixo
+        if (k < 1) inner.scale.setScalar(k)
         g.add(inner)
 
         const estado = t.state

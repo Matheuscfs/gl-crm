@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
 import { Menu } from '../../components/Menu'
 import { useToast } from '../../components/Toast'
-import { useCollection, usePatientId } from '../../lib/useCollection'
+import { useCollection, usePatient } from '../../lib/useCollection'
 import { PrintDoc } from '../../components/PrintDoc'
 import { ReciboModal, ReciboDoc, type ReciboDraft } from '../../components/Recibo'
 import { listRecibos, createRecibo, type Recibo } from '../../lib/recibos'
 import { useClinic } from '../../lib/clinic'
 import { useStore } from '../../store'
 import { todayISO, addDays, brDate, isVencidaBr } from '../../lib/dates'
+import { esquema } from '../../lib/sync'
 import { parseMoney, brMoney } from '../../lib/money'
 import { waLink, contactPhone, contactName } from '../../lib/whats'
-import { isSeedPatient, type ParcelaStatus } from '../../data'
+import { type ParcelaStatus } from '../../data'
 
 interface Row {
   id: string
@@ -19,6 +19,8 @@ interface Row {
   venc: string
   val: string
   status: ParcelaStatus
+  /** Data do pagamento (ISO), quando pago. */
+  pagoEm?: string
 }
 /** Vencimento a `dias` de hoje — a demonstração não envelhece com o calendário. */
 const vencEm = (dias: number) => brDate(addDays(todayISO(), dias))
@@ -37,16 +39,16 @@ const situacaoDe = (r: Row): ParcelaStatus => (r.status !== 'pago' && isVencidaB
 
 export default function FinanceiroPaciente() {
   const { toast } = useToast()
-  const patientId = usePatientId()
-  const { id } = useParams()
-  const patientName = id ? decodeURIComponent(id) : 'Paciente'
+  const { patient: atual, patientId, demo } = usePatient()
+  const patientName = atual?.name ?? 'Paciente'
   // parcelas demo só para pacientes de demonstração — cadastro novo começa zerado
   const { rows, save } = useCollection<Row>(
     'installments',
     patientId,
-    (r) => ({ id: r.id as string, ref: (r.ref as string) ?? '', venc: (r.venc as string) ?? '', val: (r.val as string) ?? '', status: (r.status as ParcelaStatus) ?? 'aberto' }),
-    (item) => ({ ref: item.ref, venc: item.venc, val: item.val, status: item.status }),
-    isSeedPatient(patientName) ? SEED : [],
+    (r) => ({ id: r.id as string, ref: (r.ref as string) ?? '', venc: (r.venc as string) ?? '', val: (r.val as string) ?? '', status: (r.status as ParcelaStatus) ?? 'aberto', pagoEm: (r.pago_em as string) ?? undefined }),
+    // data do pagamento (migração 0026): faturamento e recibo na data em que o dinheiro entrou
+    (item) => ({ ref: item.ref, venc: item.venc, val: item.val, status: item.status, ...(esquema.v26 ? { pago_em: item.status === 'pago' ? (item.pagoEm ?? todayISO()) : null } : {}) }),
+    demo ? SEED : [],
   )
   const { patients } = useStore()
   const clinic = useClinic()
@@ -148,7 +150,7 @@ export default function FinanceiroPaciente() {
                   <span role="cell" className="hide-sm"><span className={`q-reason ${st.cls}`}>{st.label}</span></span>
                   <span role="cell" style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <Menu items={[
-                      { label: 'Marcar como pago', disabled: r.status === 'pago', onClick: () => { save({ ...r, status: 'pago' }); toast('Parcela marcada como paga.') } },
+                      { label: 'Marcar como pago', disabled: r.status === 'pago', onClick: async () => { if (await save({ ...r, status: 'pago', pagoEm: todayISO() })) toast('Parcela marcada como paga.') } },
                       { label: 'Emitir recibo', disabled: r.status !== 'pago', onClick: () => emitirRecibo([r]) },
                       { label: 'Cobrar por WhatsApp', disabled: r.status === 'pago', onClick: () => cobrar(r) },
                     ]} />
@@ -162,7 +164,7 @@ export default function FinanceiroPaciente() {
 
       <ReciboModal open={!!draft} draft={draft} onChange={setDraft} onClose={() => setDraft(null)} onEmit={confirmarRecibo} saving={emitindo} />
 
-      <PrintDoc open={!!recibo} title="Recibo" onClose={() => setRecibo(null)}>
+      <PrintDoc open={!!recibo} title="Recibo" rodape={false} onClose={() => setRecibo(null)}>
         {recibo && <ReciboDoc recibo={recibo} clinic={clinic} />}
       </PrintDoc>
     </div>

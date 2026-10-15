@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Icon, type IconName } from '../icons'
-import { useStore, precisaComprar, type EventItem } from '../store'
+import { useStore, precisaComprar, patientPath, type EventItem } from '../store'
 import { STATUS, fmtHour } from '../data'
 import { todayISO, addDays, parseISO, saudacao } from '../lib/dates'
 import { brMoney } from '../lib/money'
@@ -85,7 +85,8 @@ export default function Resumo() {
   }
 
   const abrirPaciente = (nome: string) => {
-    if (patients.some((p) => p.name === nome)) navigate(`/pacientes/${encodeURIComponent(nome)}`)
+    const p = patients.find((x) => x.name === nome)
+    if (p) navigate(patientPath(p))
     else navigate('/agenda')
   }
 
@@ -122,7 +123,7 @@ export default function Resumo() {
     <div className="page-body rs">
       <header className="rs-top">
         <div style={{ minWidth: 0 }}>
-          <h1 className="rs-hello">{saudacao(now)}, {doutora}</h1>
+          <h1 className="rs-hello">{saudacao(now)}, <span className="title-2">{doutora}</span></h1>
           <p className="rs-date">{dateLabel}</p>
         </div>
         <UserMenu placement="down" />

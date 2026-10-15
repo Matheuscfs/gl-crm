@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
 import { Button } from '../../components/Button'
 import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
-import { usePatientId } from '../../lib/useCollection'
+import { usePatient } from '../../lib/useCollection'
 import { useLeaveGuard } from '../../lib/leaveGuard'
 import { useStore } from '../../store'
-import { isSeedPatient, type Perfil } from '../../data'
+import { type Perfil } from '../../data'
 
 type Field =
   | { id: string; label: string; type: 'text' | 'number' }
@@ -93,13 +92,12 @@ const ADULT_DEFAULTS: Record<string, unknown> = {
 
 export default function Anamnese({ perfil }: { perfil?: Perfil }) {
   const { toast } = useToast()
-  const patientId = usePatientId()
+  const { patientId, demo } = usePatient()
   const { anamnese: anamneseStore, saveAnamnese } = useStore()
   const adultForm = perfil === 'estetico' || perfil === 'adulto' // adulto e estético usam a anamnese de adulto
   const sections = adultForm ? ADULT_SECTIONS : PED_SECTIONS
-  const { id } = useParams()
   // respostas demo só para pacientes de demonstração — cadastro novo começa em branco
-  const defaults = isSeedPatient(id ? decodeURIComponent(id) : '') ? (adultForm ? ADULT_DEFAULTS : PED_DEFAULTS) : {}
+  const defaults = demo ? (adultForm ? ADULT_DEFAULTS : PED_DEFAULTS) : {}
   const [data, setData] = useState<Record<string, unknown>>(defaults)
   const [saving, setSaving] = useState(false)
   // snapshot do último estado salvo — base do aviso de "dados não salvos"
@@ -126,14 +124,15 @@ export default function Anamnese({ perfil }: { perfil?: Perfil }) {
 
   const set = (id: string, v: unknown) => setData((d) => ({ ...d, [id]: v }))
 
-  const salvar = () => {
+  const salvar = async () => {
+    if (saving) return
+    if (!patientId) return toast('A ficha ainda está sincronizando com o banco. Tente de novo em instantes.', 'info')
     setSaving(true)
-    setTimeout(() => {
-      if (patientId) saveAnamnese(patientId, data)
-      savedRef.current = JSON.stringify(data)
-      setSaving(false)
-      toast('Anamnese salva.')
-    }, 400)
+    const ok = await saveAnamnese(patientId, data)
+    setSaving(false)
+    if (!ok) return toast('Não foi possível salvar a anamnese. Verifique a conexão e tente de novo.', 'error')
+    savedRef.current = JSON.stringify(data)
+    toast('Anamnese salva.')
   }
 
   return (

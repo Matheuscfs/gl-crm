@@ -8,6 +8,7 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel = 'Excluir',
+  cancelLabel = 'Cancelar',
   danger = true,
 }: {
   open: boolean
@@ -16,6 +17,7 @@ export function ConfirmDialog({
   title: string
   message: string
   confirmLabel?: string
+  cancelLabel?: string
   danger?: boolean
 }) {
   return (
@@ -26,8 +28,8 @@ export function ConfirmDialog({
       width={400}
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button variant={danger ? 'ghost' : 'primary'} className={danger ? 'btn-danger' : ''} onClick={() => { onClose(); onConfirm() }}>
+          <Button variant="outline" onClick={onClose}>{cancelLabel}</Button>
+          <Button variant={danger ? 'danger' : 'primary'} onClick={() => { onClose(); onConfirm() }}>
             {confirmLabel}
           </Button>
         </>

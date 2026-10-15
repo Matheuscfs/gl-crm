@@ -7,7 +7,7 @@ import { useToast } from '../../components/Toast'
 import { useStore, type EventItem } from '../../store'
 import { supabase } from '../../lib/supabase'
 import { todayISO, addDays, parseISO, brDate } from '../../lib/dates'
-import { findPatientByName, contactPhone, waLink } from '../../lib/whats'
+import { findPatientForEvent, contactPhone, waLink } from '../../lib/whats'
 import type { Patient } from '../../data'
 import { retornoVencido } from '../../lib/retornos'
 
@@ -76,7 +76,7 @@ function deriveOpps(patients: Patient[], events: EventItem[]): CrcOpp[] {
     if (!cur || e.date > cur.date) faltas.set(e.child, e)
   }
   for (const e of faltas.values()) {
-    const p = findPatientByName(patients, e.child)
+    const p = findPatientForEvent(patients, e)
     const quem = p && p.resp !== '—' && p.resp ? p.resp.split('·')[0].trim() : e.child
     opps.push({
       key: `falta:${e.child}:${e.date}`,

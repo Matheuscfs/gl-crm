@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Field, TextInput, Select } from '../components/Field'
 import { useToast } from '../components/Toast'
 import { supabase } from '../lib/supabase'
+import { esquema } from '../lib/sync'
 import { DEMO_DATA } from '../lib/demo'
 import { EmptyState } from '../components/States'
 import { parcelas as seedParcelas, PARCELA_STATUS, FIN_CATEGORIAS, type ParcelaStatus } from '../data'
@@ -15,12 +16,12 @@ import { isVencidaBr, todayISO, brDate, brToIso, diffDays } from '../lib/dates'
 import { DateField } from '../components/DateField'
 import { useStore } from '../store'
 import { PrintDoc } from '../components/PrintDoc'
-import { ReciboModal, ReciboDoc, type ReciboDraft, type ClinicInfo } from '../components/Recibo'
-import { listRecibos, createRecibo, carneLeaoRows, CARNE_LEAO_HEADERS, type Recibo } from '../lib/recibos'
+import { ReciboModal, ReciboDoc, type ReciboDraft } from '../components/Recibo'
+import { useClinic } from '../lib/clinic'
+import { listRecibos, createRecibo, carneLeaoRows, CARNE_LEAO_HEADERS, textoReceitaSaude, marcarReceitaSaude, type Recibo } from '../lib/recibos'
 import { pixPayload } from '../lib/pix'
 import { waLink, contactPhone } from '../lib/whats'
 import { Icon } from '../icons'
-import { BRAND } from '../brand'
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 const TODOS = 'Todos os meses'
@@ -78,12 +79,27 @@ export default function Financeiro() {
   const [entryModal, setEntryModal] = useState<'receita' | 'despesa' | null>(null)
   const [excluindo, setExcluindo] = useState<Entry | null>(null)
   const [form, setForm] = useState({ description: '', cat: '', sub: '', value: '', date: todayISO(), status: 'pago' as 'pago' | 'aberto' })
-  const [clinic, setClinic] = useState<ClinicInfo & { pixKey: string }>({ name: BRAND.clinic, cro: BRAND.cro, cnpj: '', cpf: '', address: BRAND.city, pixKey: '' })
+  const clinic = useClinic()
   // recibos: rascunho em edição, recibo emitido (impressão) e histórico
   const [draft, setDraft] = useState<ReciboDraft | null>(null)
   const [emitindo, setEmitindo] = useState(false)
   const [recibo, setRecibo] = useState<Recibo | null>(null)
   const [recibos, setRecibos] = useState<Recibo[]>([])
+  const aLancar = recibos.filter((r) => !r.receitaSaudeEm).length
+  const copiarReceitaSaude = async (r: Recibo) => {
+    const pac = r.patientId ? patients.find((p) => p._id === r.patientId) : undefined
+    try {
+      await navigator.clipboard.writeText(textoReceitaSaude(r, pac ? { nome: pac.name, cpf: pac.cpf } : undefined))
+      toast('Dados copiados — cole no app Receita Saúde.')
+    } catch { toast('Não foi possível copiar. Selecione e copie os dados manualmente.', 'error') }
+  }
+  const alternarLancado = async (r: Recibo) => {
+    const lancado = !r.receitaSaudeEm
+    const erro = await marcarReceitaSaude(r.id, lancado)
+    if (erro) return toast(`Não foi possível marcar: ${erro}`, 'error')
+    setRecibos((prev) => prev.map((x) => (x.id === r.id ? { ...x, receitaSaudeEm: lancado ? new Date().toISOString() : undefined } : x)))
+    toast(lancado ? `Recibo #${String(r.number).padStart(4, '0')} marcado como lançado no Receita Saúde.` : 'Marcação desfeita.')
+  }
   const [verRecibos, setVerRecibos] = useState(false)
   const hoje = todayISO()
 
@@ -96,10 +112,6 @@ export default function Financeiro() {
       if (!data || data.length === 0) return
       setRows(data.map((r) => ({ id: r.id as string, resp: (r.resp as string) ?? '—', ref: (r.ref as string) ?? '', venc: (r.venc as string) ?? '', val: (r.val as string) ?? '', status: deriveStatus((r.status as ParcelaStatus) ?? 'aberto', (r.venc as string) ?? ''), patientId: (r.patient_id as string) ?? undefined })))
     })
-    supabase.from('clinic_settings').select('*').maybeSingle().then(({ data, error }) => {
-      if (cancelled || error || !data) return
-      setClinic({ name: data.name ?? BRAND.clinic, cro: data.cro ?? BRAND.cro, cnpj: data.cnpj ?? '', cpf: (data.cpf as string | null) ?? '', address: data.address ?? BRAND.city, pixKey: (data.pix_key as string | null) ?? '' })
-    })
     listRecibos().then((rs) => { if (!cancelled) setRecibos(rs) })
     supabase.from('finance_entries').select('*').order('created_at', { ascending: false }).then(({ data, error }) => {
       if (cancelled || error || !data) return
@@ -109,10 +121,37 @@ export default function Financeiro() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const setStatus = (id: string, status: ParcelaStatus, msg: string) => {
+  /** Muda a situação; só confirma depois do banco. Pago grava a data do pagamento (faturamento e Carnê-Leão). */
+  const setStatus = async (id: string, status: ParcelaStatus, msg: string): Promise<boolean> => {
+    const antes = rows.find((p) => p.id === id)
     setRows((prev) => prev.map((p) => (p.id === id ? { ...p, status: deriveStatus(status, p.venc) } : p)))
-    if (supabase && !id.startsWith('seed-')) supabase.from('installments').update({ status }).eq('id', id).then(({ error }) => { if (error) toast('Não foi possível salvar a situação da parcela.', 'error') })
+    if (supabase && !id.startsWith('seed-')) {
+      const patch: Record<string, unknown> = { status }
+      if (esquema.v26) patch.pago_em = status === 'pago' ? todayISO() : null
+      const { error } = await supabase.from('installments').update(patch).eq('id', id)
+      if (error) {
+        if (antes) setRows((prev) => prev.map((p) => (p.id === id ? antes : p)))
+        toast(`Não foi possível salvar a situação da parcela: ${error.message}`, 'error')
+        return false
+      }
+    }
     toast(msg)
+    return true
+  }
+
+  /** Cobrança no Asaas (PIX, boleto ou cartão com baixa automática) — Edge Function cobranca-psp. */
+  const [gerandoCobranca, setGerandoCobranca] = useState<string | null>(null)
+  const gerarCobrancaPsp = async (r: Row) => {
+    if (!supabase || r.id.startsWith('seed-')) return toast('Disponível com o banco ligado.', 'info')
+    setGerandoCobranca(r.id)
+    const { data, error } = await supabase.functions.invoke('cobranca-psp', { body: { installment_id: r.id } })
+    setGerandoCobranca(null)
+    if (error || !data?.link) {
+      const msg = (data as { erro?: string } | null)?.erro ?? (error?.message?.includes('Failed to send') || error?.message?.includes('404') ? 'a função cobranca-psp ainda não foi publicada (veja supabase/functions/README.md)' : error?.message)
+      return toast(`Não foi possível gerar a cobrança: ${msg ?? 'erro desconhecido'}.`, 'error')
+    }
+    try { await navigator.clipboard.writeText(data.link) } catch { /* sem permissão de área de transferência */ }
+    toast(`Cobrança ${data.reaproveitada ? 'já existia' : 'gerada'} — link copiado: ${data.link}`)
   }
 
   /** Paciente da parcela: pelo patient_id ou casando o nome do responsável com o cadastro. */
@@ -178,7 +217,7 @@ export default function Financeiro() {
 
   const pixFor = (r: Row): string | null => {
     if (!clinic.pixKey.trim()) return null
-    return pixPayload({ key: clinic.pixKey, name: clinic.name, city: clinic.address, amount: parseMoney(r.val), txid: r.ref })
+    return pixPayload({ key: clinic.pixKey, name: clinic.name, city: clinic.cidade || clinic.address, amount: parseMoney(r.val), txid: r.ref })
   }
 
   const cobrar = (r: Row) => {
@@ -439,11 +478,12 @@ export default function Financeiro() {
                     <span className="row-actions" role="cell">
                       {acaoPrincipal(r)}
                       <Menu width={230} items={[
-                        { label: 'Marcar como pago', disabled: r.status === 'pago', onClick: () => { setStatus(r.id, 'pago', `Parcela de ${r.resp} marcada como paga.`); pedirRecibo(r) } },
+                        { label: 'Marcar como pago', disabled: r.status === 'pago', onClick: async () => { if (await setStatus(r.id, 'pago', `Parcela de ${r.resp} marcada como paga.`)) pedirRecibo(r) } },
                         { label: 'Cobrar por WhatsApp', disabled: r.status === 'pago', onClick: () => cobrar(r) },
                         { label: 'Copiar PIX copia e cola', disabled: r.status === 'pago', onClick: () => copiarPix(r) },
+                        { label: gerandoCobranca === r.id ? 'Gerando cobrança…' : 'Gerar cobrança (PIX/boleto Asaas)', disabled: r.status === 'pago' || gerandoCobranca === r.id, onClick: () => void gerarCobrancaPsp(r) },
                         { label: 'Emitir recibo', disabled: r.status !== 'pago', onClick: () => pedirRecibo(r) },
-                        { label: 'Reabrir', disabled: r.status !== 'pago', onClick: () => setStatus(r.id, 'aberto', 'Parcela reaberta.') },
+                        { label: 'Reabrir', disabled: r.status !== 'pago', onClick: () => void setStatus(r.id, 'aberto', 'Parcela reaberta.') },
                       ]} />
                     </span>
                   </div>
@@ -486,9 +526,10 @@ export default function Financeiro() {
             </section>
 
             <section className="panel">
-              <h2 className="panel-title sm">Recibos e Carnê-Leão</h2>
+              <h2 className="panel-title sm">Recibos, Receita Saúde e Carnê-Leão</h2>
               <p className="panel-sub" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
                 {recibos.length ? `${plural(recibos.length, 'recibo emitido', 'recibos emitidos')} · total ${brMoney(recibos.reduce((s, r) => s + r.value, 0))}.` : 'Nenhum recibo emitido ainda.'}
+                {esquema.v26 && aLancar > 0 && <><br /><b style={{ color: 'var(--amber-dark)' }}>{plural(aLancar, 'recibo a lançar', 'recibos a lançar')} no Receita Saúde.</b></>}
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
                 <button className="btn-soft" style={{ height: 38 }} onClick={() => setVerRecibos(true)}>Ver recibos</button>
@@ -572,7 +613,7 @@ export default function Financeiro() {
       {/* Recibo: confirmação → gravação numerada → impressão */}
       <ReciboModal open={!!draft} draft={draft} onChange={setDraft} onClose={() => setDraft(null)} onEmit={emitirRecibo} saving={emitindo} />
 
-      <PrintDoc open={!!recibo} title="Recibo" onClose={() => setRecibo(null)}>
+      <PrintDoc open={!!recibo} title="Recibo" rodape={false} onClose={() => setRecibo(null)}>
         {recibo && <ReciboDoc recibo={recibo} clinic={clinic} />}
       </PrintDoc>
 
@@ -588,8 +629,8 @@ export default function Financeiro() {
         }>
         {recibos.length === 0 && (
           <div style={{ font: "400 12.5px var(--font)", color: 'var(--slate)' }}>
-            Os recibos aparecem aqui conforme forem emitidos. O CSV de exportação traz data, CPF, nome, descrição e valor —
-            o formato que o Carnê-Leão (e o script de importação) espera.
+            Os recibos aparecem aqui conforme forem emitidos. Para cada um, "Copiar para o Receita Saúde" deixa os dados na ordem do
+            app da Receita (que lança no Carnê-Leão); o CSV traz data, CPF, nome, descrição e valor.
           </div>
         )}
         {recibos.map((r) => (
@@ -600,9 +641,14 @@ export default function Financeiro() {
               <div style={{ font: "400 11.5px var(--font)", color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {brDate(r.issuedOn)} · {r.payerCpf || 'sem CPF'} · {r.description || '—'}
               </div>
+              {r.receitaSaudeEm && <div style={{ font: '500 11px var(--font)', color: 'var(--green-dark)' }}>✓ lançado no Receita Saúde em {brDate(r.receitaSaudeEm.slice(0, 10))}</div>}
             </div>
             <span className="tnum" style={{ font: "600 13px var(--font)", color: 'var(--green-dark)' }}>{brMoney(r.value)}</span>
-            <Button size="sm" variant="ghost" onClick={() => { setVerRecibos(false); setRecibo(r) }}>Ver</Button>
+            <Menu width={240} items={[
+              { label: 'Ver / imprimir', onClick: () => { setVerRecibos(false); setRecibo(r) } },
+              { label: 'Copiar para o Receita Saúde', onClick: () => void copiarReceitaSaude(r) },
+              ...(esquema.v26 ? [{ label: r.receitaSaudeEm ? 'Desmarcar lançado no Receita Saúde' : 'Marcar como lançado no Receita Saúde', onClick: () => void alternarLancado(r) }] : []),
+            ]} />
           </div>
         ))}
       </Modal>

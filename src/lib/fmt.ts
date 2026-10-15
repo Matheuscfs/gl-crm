@@ -4,13 +4,8 @@
 export const fmtMoney = (v: number) =>
   (Number.isFinite(v) ? v : 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-/** "R$ 1.234,56" / "180,5" / "180" → número em reais. 0 se inválido. */
-export const parseMoney = (s: string | null | undefined) => {
-  if (!s) return 0
-  const clean = String(s).replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.')
-  const n = Number(clean)
-  return Number.isFinite(n) ? n : 0
-}
+/** Um só parser de dinheiro para o app inteiro (entende "180.50" do teclado do tablet). */
+export { parseMoney } from './money'
 
 /** 40 → "40 min" · 60 → "1h" · 90 → "1h30" */
 export const fmtDur = (min: number) => {

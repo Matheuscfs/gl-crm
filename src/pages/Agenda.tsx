@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import { Icon } from '../icons'
 import { Button } from '../components/Button'
@@ -6,17 +6,20 @@ import { Modal } from '../components/Modal'
 import { Field, TextInput, Select, FieldRow } from '../components/Field'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'
-import { useOutsideClick } from '../components/useOutsideClick'
-import { useStore, type EventItem, type Procedimento } from '../store'
+import { useStore, matchFicha, type EventItem, type Procedimento } from '../store'
 import { dayRange, type Range } from '../lib/horarios'
 import { useGoogle } from '../lib/GoogleProvider'
-import { pushAppointment } from '../lib/googleCalendar'
+import { pushAppointment, syncAppointment } from '../lib/googleCalendar'
+import { usePedidosRemarcar } from '../lib/automacao'
+import { PedidosOnline, usePedidosOnline } from './agenda/PedidosOnline'
+import { esquema } from '../lib/sync'
 import { mondayOf, addDays, addMonths, todayISO, weekColumns, weekRangeLabel, longDate, isoDate, parseISO, brDate } from '../lib/dates'
-import { waLink, findPatientByName, contactPhone, contactName } from '../lib/whats'
+import { waLink, findPatientForEvent, contactPhone, contactName } from '../lib/whats'
 import { msgConfirmacao } from '../lib/mensagens'
 import { WaButton } from '../components/ui'
 import { fmtDur, fmtMoney } from '../lib/fmt'
 import { DateField } from '../components/DateField'
+import { SuggestInput, type SuggestOption } from '../components/SuggestInput'
 import { Butterfly } from './documents/DocKit'
 import { STATUS, timeLabels, fmtHour, AGENDA_START, AGENDA_ROW, PERFIL, perfilToKind, type ApptStatus, type ApptKind, type Patient } from '../data'
 import { PatientPhoto } from '../components/PatientPhoto'
@@ -101,60 +104,29 @@ function KindMark({ kind }: { kind?: ApptKind }) {
   )
 }
 
-/* ---------- busca de paciente ---------- */
+/* ---------- busca de paciente e de procedimento (sobre o SuggestInput) ---------- */
 function PatientPicker({ value, patients, onType, onPick }: { value: string; patients: Patient[]; onType: (v: string) => void; onPick: (p: Patient) => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useOutsideClick(ref, () => setOpen(false), open)
-  const results = value.trim() ? patients.filter((p) => p.name.toLowerCase().includes(value.toLowerCase())).slice(0, 8) : patients.slice(0, 8)
+  const opcoes = useMemo<SuggestOption<Patient>[]>(() => patients.map((p) => ({
+    value: p.name, key: p._id ?? p.name, item: p,
+    sub: `${p.age} · ${PERFIL[p.perfil ?? 'pediatrico'].label}`,
+    lead: <span className="avatar" style={{ width: 26, height: 26, font: "600 10px var(--font)" }}>{p.initials}</span>,
+  })), [patients])
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <input className="field-input" value={value} placeholder="Buscar paciente cadastrado ou digitar novo…" onClick={() => setOpen(true)} onChange={(e) => { onType(e.target.value); setOpen(true) }} />
-      {open && (
-        <div className="menu-pop" style={{ left: 0, right: 0, width: 'auto', maxHeight: 240, overflow: 'auto' }}>
-          {results.length === 0 ? (
-            <div style={{ padding: '9px 11px', font: "400 12px var(--font)", color: 'var(--muted)' }}>Nenhum cadastrado — será um novo nome.</div>
-          ) : results.map((p) => (
-            <button key={p.name} className="menu-item" onClick={() => { onPick(p); setOpen(false) }}>
-              <span className="avatar" style={{ width: 26, height: 26, font: "600 10px var(--font)" }}>{p.initials}</span>
-              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                <span style={{ font: "500 12.5px var(--font)", color: 'var(--ink)' }}>{p.name}</span>
-                <span style={{ font: "400 11px var(--font)", color: 'var(--muted)' }}>{p.age} · {PERFIL[p.perfil ?? 'pediatrico'].label}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <SuggestInput value={value} options={opcoes} limit={8} chevron={false}
+      placeholder="Buscar paciente cadastrado ou digitar novo…" emptyText="Nenhum cadastrado — será um novo nome."
+      onChange={onType} onPick={(_, o) => { if (o.item) onPick(o.item) }} />
   )
 }
 
-/* ---------- seletor de procedimento (dropdown estilizado) ---------- */
 function ProcPicker({ value, procs, onType, onPick }: { value: string; procs: Procedimento[]; onType: (v: string) => void; onPick: (p: Procedimento) => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useOutsideClick(ref, () => setOpen(false), open)
-  const results = value.trim() ? procs.filter((p) => p.proc.toLowerCase().includes(value.toLowerCase())) : procs
+  const opcoes = useMemo<SuggestOption<Procedimento>[]>(() => procs.map((p) => ({
+    value: p.proc, key: p.id, item: p,
+    sub: `${p.cat} · ${fmtDur(p.durMin)}`,
+    trail: <span className="tnum" style={{ font: "600 12px var(--font)", color: 'var(--ink)', flex: 'none' }}>{fmtMoney(p.val)}</span>,
+  })), [procs])
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <input className="field-input" value={value} placeholder="Selecione ou digite" onClick={() => setOpen(true)} onChange={(e) => { onType(e.target.value); setOpen(true) }} />
-      <span style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--muted)', display: 'flex' }}><Icon name="chevDown" size={16} /></span>
-      {open && (
-        <div className="menu-pop" style={{ left: 0, right: 0, width: 'auto', maxHeight: 240, overflow: 'auto' }}>
-          {results.length === 0 ? (
-            <div style={{ padding: '9px 11px', font: "400 12px var(--font)", color: 'var(--muted)' }}>Sem correspondência — será um novo procedimento.</div>
-          ) : results.map((p) => (
-            <button key={p.id} className="menu-item" onClick={() => { onPick(p); setOpen(false) }}>
-              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
-                <span style={{ font: "500 12.5px var(--font)", color: 'var(--ink)' }}>{p.proc}</span>
-                <span style={{ font: "400 11px var(--font)", color: 'var(--muted)' }}>{p.cat} · {fmtDur(p.durMin)}</span>
-              </span>
-              <span className="tnum" style={{ font: "600 12px var(--font)", color: 'var(--ink)', flex: 'none' }}>{fmtMoney(p.val)}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <SuggestInput value={value} options={opcoes} placeholder="Selecione ou digite" emptyText="Sem correspondência — será um novo procedimento."
+      onChange={onType} onPick={(_, o) => { if (o.item) onPick(o.item) }} />
   )
 }
 
@@ -171,7 +143,7 @@ function EventCard({ e, onClick, dragging, displayStart, compact }: { e: EventIt
   const time = displayStart ?? e.start
   const { patients } = useStore()
   // na semana a coluna é estreita: a foto só aparece na visão Diária
-  const photo = compact ? undefined : findPatientByName(patients, e.child)?.photoUrl
+  const photo = compact ? undefined : findPatientForEvent(patients, e)?.photoUrl
   const passado = e.date < todayISO()
   return (
     <div onClick={onClick} className={`ev-card ev-${e.status}${passado ? ' passado' : ''}${dragging ? ' dragging' : ''}`}
@@ -192,17 +164,25 @@ const HALF_ROW = AGENDA_ROW / 2 // 30 min
 
 function DraggableEvent({ e, onOpen, onResize, lane = 0, lanes = 1, colW = 0, range }: { e: EventItem; onOpen: (e: EventItem) => void; onResize: (id: string, dur: number) => void; lane?: number; lanes?: number; colW?: number; range?: Range }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: e.id })
+  // durante o arrasto a duração muda só na tela; o banco recebe uma gravação, ao soltar
+  const [durViva, setDurViva] = useState<number | null>(null)
   const startResize = (down: React.PointerEvent) => {
     down.stopPropagation()
     down.preventDefault()
     const y0 = down.clientY
     const dur0 = e.dur
     const teto = Math.min(AGENDA_END, range?.end ?? AGENDA_END) - e.start
+    let atual = dur0
     const move = (m: PointerEvent) => {
-      const next = Math.min(Math.max(0.5, teto), Math.max(0.5, snapHalf(dur0 + (m.clientY - y0) / AGENDA_ROW)))
-      onResize(e.id, next)
+      atual = Math.min(Math.max(0.5, teto), Math.max(0.5, snapHalf(dur0 + (m.clientY - y0) / AGENDA_ROW)))
+      setDurViva(atual)
     }
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      setDurViva(null)
+      if (atual !== dur0) onResize(e.id, atual)
+    }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
@@ -217,7 +197,7 @@ function DraggableEvent({ e, onOpen, onResize, lane = 0, lanes = 1, colW = 0, ra
   return (
     <div ref={setNodeRef} className="ev-wrap" style={{
       position: 'absolute', left: `calc(${lane * w}% + 4px)`, width: `calc(${w}% - 8px)`,
-      top: (e.start - AGENDA_START) * AGENDA_ROW + 1, height: e.dur * AGENDA_ROW - 6,
+      top: (e.start - AGENDA_START) * AGENDA_ROW + 1, height: (durViva ?? e.dur) * AGENDA_ROW - 6,
       transform: isDragging ? `translate3d(${sx}px, ${sy}px, 0)` : undefined,
       zIndex: isDragging ? 50 : 1, touchAction: 'none',
     }}>
@@ -281,15 +261,30 @@ function DayColumn({ iso, today, range, onCreate, children }: { iso: string; tod
   )
 }
 
-const EMPTY = (date: string) => ({ date, hour: '9', dur: '1', child: '', age: '', proc: '', status: 'agendado' as ApptStatus, kind: 'ped' as ApptKind })
+const EMPTY = (date: string) => ({ date, hour: '9', dur: '1', child: '', age: '', proc: '', status: 'agendado' as ApptStatus, kind: 'ped' as ApptKind, patientId: '', procId: '' })
 
 export default function Agenda() {
   const [view, setView] = useState('Semanal')
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()))
   const [monthAnchor, setMonthAnchor] = useState(() => `${todayISO().slice(0, 7)}-01`)
-  const { events, patients, procedimentos, horarios, addAppointment, updateAppointment, deleteAppointment, moveAppointment, baixaProcedimento, gerarCobranca } = useStore()
+  const { events, patients, procedimentos, horarios, addAppointment, updateAppointment, cancelAppointment, moveAppointment, concluirAtendimento } = useStore()
   const { toast } = useToast()
   const google = useGoogle()
+  const pedidosRemarcar = new Set(usePedidosRemarcar().map((m) => m.appointment_id))
+  const pedidosOnline = usePedidosOnline()
+  const [verPedidos, setVerPedidos] = useState(false)
+  // Google Agenda acompanha o app: remarcar, mudar duração/procedimento ou desmarcar atualiza o evento de lá
+  const assinaturaGoogle = useRef(new Map<string, string>())
+  useEffect(() => {
+    if (!google.connected) return
+    events.forEach((e) => {
+      if (!e.gcalId) return
+      const sig = `${e.date}|${e.start}|${e.dur}|${e.proc}|${e.child}|${e.status}`
+      const antes = assinaturaGoogle.current.get(e.id)
+      assinaturaGoogle.current.set(e.id, sig)
+      if (antes && antes !== sig) void syncAppointment(e.gcalId, e)
+    })
+  }, [events, google.connected])
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(EMPTY(todayISO()))
@@ -386,7 +381,7 @@ export default function Agenda() {
     openNew(iso, hour)
   }
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.child.trim()) return toast('Informe o paciente.', 'error')
     if (!form.date) return toast('Informe a data do atendimento.', 'error')
     // respeita os horários de atendimento (Configurações)
@@ -394,19 +389,28 @@ export default function Agenda() {
     if (!range) return toast('A clínica não atende neste dia.', 'error')
     const start = Number(form.hour), dur = Number(form.dur)
     if (start < range.start || start + dur > range.end) return toast(`Fora do expediente (${fmtHour(range.start)} – ${fmtHour(range.end)}).`, 'error')
+    if (saving) return
     setSaving(true)
     const date = form.date
-    const ev = { start, dur, child: form.child.trim(), age: form.age.trim() || '—', proc: form.proc.trim() || 'Consulta', status: form.status, kind: form.kind }
-    setTimeout(() => {
-      addAppointment(date, ev)
-      setSaving(false)
-      setOpen(false)
-      setWeekStart(mondayOf(parseISO(date)))
-      const conf = conflictAt(date, ev.start, ev.dur)
-      if (conf) toast(`Agendado — atenção: conflito com ${conf.child} às ${fmtHour(conf.start)}.`, 'error')
-      else toast('Agendamento criado.')
-      if (google.connected) pushAppointment({ date, ...ev }).then((id) => { if (id) toast('Evento criado no Google Calendar.', 'info') })
-    }, 300)
+    const ev = {
+      start, dur, child: form.child.trim(), age: form.age.trim() || '—', proc: form.proc.trim() || 'Consulta', status: form.status, kind: form.kind,
+      patientId: form.patientId || undefined, procId: form.procId || undefined,
+    }
+    const conf = conflictAt(date, ev.start, ev.dur)
+    const id = await addAppointment(date, ev)
+    setSaving(false)
+    if (!id) return // o aviso do erro já apareceu; o formulário continua aberto
+    setOpen(false)
+    setWeekStart(mondayOf(parseISO(date)))
+    if (conf) toast(`Agendado — atenção: conflito com ${conf.child} às ${fmtHour(conf.start)}.`, 'error')
+    else toast('Agendamento criado.')
+    if (google.connected) {
+      pushAppointment({ date, ...ev }).then((gcal) => {
+        if (!gcal) return
+        void updateAppointment(id, { gcalId: gcal })
+        toast('Evento criado no Google Calendar.', 'info')
+      })
+    }
   }
 
   const onDragStart = (_e: DragStartEvent) => {
@@ -433,29 +437,40 @@ export default function Agenda() {
     }
   }
 
-  const setStatus = (s: ApptStatus) => {
-    if (!detail) return
-    const prev = detail.status
-    updateAppointment(detail.id, { status: s })
+  const [concluindo, setConcluindo] = useState<EventItem | null>(null)
+  const setStatus = async (s: ApptStatus) => {
+    if (!detail || detail.status === s) return
+    // concluir dá baixa no estoque e gera a cobrança: pede confirmação (uma vez por atendimento)
+    if (s === 'concluido' && !detail.cobradoEm) return setConcluindo(detail)
+    const ok = await updateAppointment(detail.id, { status: s })
+    if (!ok) return
     setDetail({ ...detail, status: s })
-    // concluir o atendimento dá baixa no estoque e gera a cobrança do procedimento
-    if (s === 'concluido' && prev !== 'concluido') {
-      const parts: string[] = []
-      const n = baixaProcedimento(detail.proc, detail.child)
-      if (n > 0) parts.push(`${n} itens baixados do estoque`)
-      const v = gerarCobranca(detail.proc, detail.child)
-      if (v > 0) parts.push(`cobrança de ${fmtMoney(v)} gerada`)
-      toast(parts.length ? `Atendimento concluído · ${parts.join(' · ')}.` : 'Atendimento concluído.')
-      return
-    }
     toast(`Status: ${STATUS[s].label}.`, 'info')
   }
+  const concluir = async (ev: EventItem) => {
+    setConcluindo(null)
+    const r = await concluirAtendimento(ev.id)
+    setDetail((d) => (d && d.id === ev.id ? { ...d, status: 'concluido', cobradoEm: d.cobradoEm ?? new Date().toISOString() } : d))
+    if (r.jaCobrado) return toast('Atendimento concluído (já tinha sido cobrado antes).', 'info')
+    const parts: string[] = []
+    if (r.itens > 0) parts.push(`${r.itens} itens baixados do estoque`)
+    if (r.valor > 0) parts.push(`cobrança de ${fmtMoney(r.valor)} gerada`)
+    toast(parts.length ? `Atendimento concluído · ${parts.join(' · ')}.` : 'Atendimento concluído.')
+  }
+  /** Valor que a conclusão vai cobrar (para a confirmação). */
+  const valorDe = (ev: EventItem) => ((ev.procId && procedimentos.find((p) => p.id === ev.procId)) || matchFicha(procedimentos, ev.proc))?.val ?? 0
   // edição direta de um agendamento existente (salva na hora, como o resto do app)
-  const patchDetail = (p: Partial<EventItem>) => { if (!detail) return; updateAppointment(detail.id, p); setDetail({ ...detail, ...p }) }
+  const patchDetail = async (p: Partial<EventItem>) => {
+    if (!detail) return
+    const antes = detail
+    setDetail({ ...detail, ...p })
+    const ok = await updateAppointment(detail.id, p)
+    if (!ok) setDetail(antes)
+  }
 
   /** Abre o WhatsApp do responsável (ou do paciente) com a confirmação pronta. */
   const enviarConfirmacao = (e: EventItem) => {
-    const p = findPatientByName(patients, e.child)
+    const p = findPatientForEvent(patients, e)
     const quando = e.date === today ? 'hoje' : e.date === addDays(today, 1) ? 'amanhã' : `em ${brDate(e.date)}`
     const msg = msgConfirmacao(e.child, p, quando, fmtHour(e.start), e.proc, (e.kind ?? 'ped') === 'ped')
     const link = waLink(contactPhone(p), msg)
@@ -508,9 +523,15 @@ export default function Agenda() {
               {VIEWS.map(([v, rot]) => <button key={v} aria-pressed={v === view} onClick={() => trocarVisao(v)}>{rot}</button>)}
             </div>
           )}
+          {esquema.v26 && (
+            <button className="btn-soft pedidos-btn" onClick={() => setVerPedidos(true)}>
+              Pedidos online{pedidosOnline.pedidos.length > 0 && <span className="nav-badge">{pedidosOnline.pedidos.length}</span>}
+            </button>
+          )}
           <button className="btn-cta" onClick={() => openNew(celular ? dayFocus : undefined)}><Icon name="plus" size={16} /> {celular ? 'Novo' : 'Novo agendamento'}</button>
         </div>
       </header>
+      <PedidosOnline open={verPedidos} onClose={() => setVerPedidos(false)} pedidos={pedidosOnline.pedidos} onMudou={pedidosOnline.recarregar} />
 
       <div className="page-body">
         {celular ? (
@@ -595,7 +616,7 @@ export default function Agenda() {
               ) : (
                 <div className="list-rows">
                   {aConfirmar.map((e) => {
-                    const p = findPatientByName(patients, e.child)
+                    const p = findPatientForEvent(patients, e)
                     return (
                       <div key={e.id} className="list-row">
                         <button className="q-text" style={{ flex: 1, border: 'none', background: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', font: 'inherit' }} onClick={() => setDetail(e)}>
@@ -629,12 +650,12 @@ export default function Agenda() {
             <section className="panel">
               <h2 className="panel-title sm">Legenda</h2>
               <div className="legend" style={{ marginTop: 12, gap: 9 }}>
-                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--surface)', border: '1.5px dashed #e7a3a3' }} />Sem confirmação (tracejado)</div>
+                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--surface)', border: '1.5px dashed var(--red-border)' }} />Sem confirmação (tracejado)</div>
                 <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--primary-bg)', border: '1px solid var(--primary-border)' }} />Confirmado</div>
-                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--amber-bg)', border: '1px solid #f3d9a8' }} />Em atendimento</div>
-                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--green-bg)', border: '1px solid #bfe6cf' }} />Concluído</div>
-                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--red-bg)', border: '1px solid #f6c9c9' }} />Faltou</div>
-                <div className="legend-row"><span className="legend-swatch" style={{ background: '#f4f3f8', border: '1px solid var(--border-strong)' }} />Desmarcado ou passado</div>
+                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--amber-bg)', border: '1px solid color-mix(in srgb, var(--amber) 35%, transparent)' }} />Em atendimento</div>
+                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--green-bg)', border: '1px solid color-mix(in srgb, var(--green) 35%, transparent)' }} />Concluído</div>
+                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)' }} />Faltou</div>
+                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--bg-soft)', border: '1px solid var(--border-strong)' }} />Desmarcado ou passado</div>
               </div>
             </section>
           </aside>
@@ -647,7 +668,7 @@ export default function Agenda() {
         footer={<><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button loading={saving} onClick={submit}>Agendar</Button></>}>
         <Field label="Perfil do atendimento"><Select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as ApptKind })}><option value="ped">Pediátrico</option><option value="est">Estético</option><option value="adt">Adulto</option></Select></Field>
         <Field label="Paciente">
-          <PatientPicker value={form.child} patients={patients} onType={(v) => setForm({ ...form, child: v })} onPick={(p) => setForm({ ...form, child: p.name, age: p.age, kind: perfilToKind(p.perfil) })} />
+          <PatientPicker value={form.child} patients={patients} onType={(v) => setForm({ ...form, child: v, patientId: '' })} onPick={(p) => setForm({ ...form, child: p.name, age: p.age, kind: perfilToKind(p.perfil), patientId: (p as { _id?: string })._id ?? '' })} />
         </Field>
         <FieldRow>
           <Field label="Idade"><TextInput value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} placeholder="Ex.: 6a" /></Field>
@@ -655,8 +676,8 @@ export default function Agenda() {
             <ProcPicker
               value={form.proc}
               procs={procedimentos}
-              onType={(v) => setForm({ ...form, proc: v, dur: procDur[v] ? String(procDur[v]) : form.dur })}
-              onPick={(p) => setForm({ ...form, proc: p.proc, dur: procDur[p.proc] ? String(procDur[p.proc]) : form.dur })}
+              onType={(v) => setForm({ ...form, proc: v, procId: '', dur: procDur[v] ? String(procDur[v]) : form.dur })}
+              onPick={(p) => setForm({ ...form, proc: p.proc, procId: p.id, dur: procDur[p.proc] ? String(procDur[p.proc]) : form.dur })}
             />
           </Field>
         </FieldRow>
@@ -672,29 +693,33 @@ export default function Agenda() {
 
       {/* Detalhe do evento */}
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.child ?? ''} subtitle={detail ? `${detail.proc} · ${longDate(detail.date)} · ${fmtHour(detail.start)}` : ''} width={420}
-        footer={detail ? (<><Button variant="ghost" className="btn-danger" onClick={() => setConfirmDel(true)}>Cancelar consulta</Button><Button onClick={() => setDetail(null)}>Fechar</Button></>) : undefined}>
+        footer={detail ? (<><Button variant="danger" onClick={() => setConfirmDel(true)}>Desmarcar consulta</Button><Button onClick={() => setDetail(null)}>Fechar</Button></>) : undefined}>
         {detail && (
           <>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} role="group" aria-label="Situação do atendimento">
               {LEGEND.map((s) => (
                 <button key={s} aria-pressed={detail.status === s} className={`chip ev-${s}`} onClick={() => setStatus(s)}
-                  style={{ padding: '6px 11px', borderRadius: 20, font: "600 11.5px var(--font)", border: `1px solid ${detail.status === s ? 'var(--ev-border)' : 'var(--line)'}`, background: detail.status === s ? 'var(--ev-bg)' : '#fff', color: detail.status === s ? 'var(--ev-fg)' : 'var(--muted)', borderStyle: 'solid' }}>
+                  style={{ padding: '6px 11px', borderRadius: 20, font: "600 11.5px var(--font)", border: `1px solid ${detail.status === s ? 'var(--ev-border)' : 'var(--line)'}`, background: detail.status === s ? 'var(--ev-bg)' : 'var(--surface)', color: detail.status === s ? 'var(--ev-fg)' : 'var(--muted)', borderStyle: 'solid' }}>
                   {s === 'agendado' ? 'Sem confirmação' : STATUS[s].label}
                 </button>
               ))}
             </div>
+            {pedidosRemarcar.has(detail.id) && detail.status === 'agendado' && (
+              <div className="notice" role="status"><p className="notice-text"><b>Pediu para remarcar</b> respondendo à confirmação automática. Ligue ou mande mensagem para combinar o novo horário.</p></div>
+            )}
+            {detail.confirmadoEm && <div style={{ font: '500 12px var(--font)', color: 'var(--green-dark)' }}>Confirmado pelo WhatsApp</div>}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <WaButton onClick={() => enviarConfirmacao(detail)}>Enviar confirmação por WhatsApp</WaButton>
               <span style={{ font: "400 11.5px var(--font)", color: 'var(--muted)' }}>ao responder SIM, marque como Confirmado</span>
             </div>
             <Field label="Perfil do atendimento"><Select value={detail.kind ?? 'ped'} onChange={(e) => patchDetail({ kind: e.target.value as ApptKind })}><option value="ped">Pediátrico</option><option value="est">Estético</option><option value="adt">Adulto</option></Select></Field>
             <Field label="Paciente">
-              <PatientPicker value={detail.child} patients={patients} onType={(v) => patchDetail({ child: v })} onPick={(p) => patchDetail({ child: p.name, age: p.age, kind: perfilToKind(p.perfil) })} />
+              <PatientPicker value={detail.child} patients={patients} onType={(v) => patchDetail({ child: v })} onPick={(p) => patchDetail({ child: p.name, age: p.age, kind: perfilToKind(p.perfil), patientId: (p as { _id?: string })._id })} />
             </Field>
             <FieldRow>
               <Field label="Idade"><TextInput value={detail.age} onChange={(e) => patchDetail({ age: e.target.value })} placeholder="Ex.: 6a" /></Field>
               <Field label="Procedimento">
-                <ProcPicker value={detail.proc} procs={procedimentos} onType={(v) => patchDetail({ proc: v, dur: procDur[v] ?? detail.dur })} onPick={(p) => patchDetail({ proc: p.proc, dur: procDur[p.proc] ?? detail.dur })} />
+                <ProcPicker value={detail.proc} procs={procedimentos} onType={(v) => patchDetail({ proc: v, dur: procDur[v] ?? detail.dur })} onPick={(p) => patchDetail({ proc: p.proc, procId: p.id, dur: procDur[p.proc] ?? detail.dur })} />
               </Field>
             </FieldRow>
             <FieldRow>
@@ -707,8 +732,14 @@ export default function Agenda() {
         )}
       </Modal>
 
-      <ConfirmDialog open={confirmDel} onClose={() => setConfirmDel(false)} onConfirm={() => { if (detail) { deleteAppointment(detail.id); toast('Consulta cancelada.'); setDetail(null) } }}
-        title="Cancelar consulta" message={`Deseja cancelar a consulta de ${detail?.child ?? ''}?`} confirmLabel="Cancelar consulta" />
+      <ConfirmDialog open={confirmDel} onClose={() => setConfirmDel(false)}
+        onConfirm={async () => { if (!detail) return; const ok = await cancelAppointment(detail.id); if (ok) { toast('Consulta desmarcada — o registro fica no histórico.'); setDetail(null) } }}
+        title="Desmarcar consulta" message={`Desmarcar a consulta de ${detail?.child ?? ''}? O horário fica livre e o registro continua no histórico (aparece em "Desmarcado").`} confirmLabel="Desmarcar" />
+
+      <ConfirmDialog open={!!concluindo} onClose={() => setConcluindo(null)} onConfirm={() => { if (concluindo) void concluir(concluindo) }}
+        title="Concluir atendimento"
+        message={concluindo ? `Concluir ${concluindo.proc} de ${concluindo.child}? ${valorDe(concluindo) > 0 ? `Vai gerar a cobrança de ${fmtMoney(valorDe(concluindo))} e ` : 'Vai '}dar baixa nos materiais da ficha técnica. Isso acontece uma vez só por atendimento.` : ''}
+        confirmLabel="Concluir" />
     </>
   )
 }

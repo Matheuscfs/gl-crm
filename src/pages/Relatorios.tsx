@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Dropdown } from '../components/Menu'
-import { CountUp } from '../components/ui'
+import { StatCard } from '../components/ui'
 import { EmptyState } from '../components/States'
 import { useStore, matchFicha } from '../store'
 import { supabase } from '../lib/supabase'
 import { parseISO, todayISO } from '../lib/dates'
 import { dayRange } from '../lib/horarios'
 import { brMoney, parseMoney } from '../lib/money'
-import { STATUS, type ApptStatus, type ApptKind } from '../data'
+import { STATUS, ORIGENS, type ApptStatus, type ApptKind } from '../data'
 
 const PERIODOS = ['Este mês', 'Últimos 30 dias', 'Últimos 90 dias', 'Tudo']
 const DAY_MS = 86400000
@@ -138,7 +138,8 @@ export default function Relatorios() {
   const origens = useMemo(() => {
     const count = new Map<string, number>()
     funil.flatMap((c) => c.cards).forEach((c) => {
-      const o = (c.origem || '').trim() || (c.info || '').split('·')[0].trim()
+      const antigo = (c.info || '').split('·')[0].trim()
+      const o = (c.origem || '').trim() || (ORIGENS.includes(antigo) ? antigo : '')
       if (o) count.set(o, (count.get(o) ?? 0) + 1)
     })
     patients.forEach((p) => {
@@ -157,16 +158,16 @@ export default function Relatorios() {
         <Dropdown label="Período" value={periodo} options={PERIODOS} onChange={setPeriodo} active />
       </header>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div className="page-body">
         {/* KPIs */}
-        <div className="stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-          <Kpi label="Atendimentos concluídos" value={String(stats.concluidos)} sub={`de ${stats.total} no período`} tone="#16a34a" />
-          <Kpi label="Taxa de faltas" value={`${stats.taxaFaltas}%`} sub={`${stats.faltas} falta${stats.faltas === 1 ? '' : 's'}`} tone={stats.taxaFaltas > 15 ? '#dc2626' : '#d97706'} />
-          <Kpi label="Ocupação da agenda" value={`${stats.ocupacao}%`} sub="horas agendadas ÷ expediente" tone="var(--primary)" />
-          <Kpi label="Faturamento recebido" value={brMoney(stats.faturado)} sub="parcelas + receitas pagas" tone="var(--primary)" />
+        <div className="stagger grid-kpi">
+          <StatCard label="Atendimentos concluídos" value={String(stats.concluidos)} sub={`de ${stats.total} no período`} tone="#16a34a" />
+          <StatCard label="Taxa de faltas" value={`${stats.taxaFaltas}%`} sub={`${stats.faltas} falta${stats.faltas === 1 ? '' : 's'}`} tone={stats.taxaFaltas > 15 ? '#dc2626' : '#d97706'} />
+          <StatCard label="Ocupação da agenda" value={`${stats.ocupacao}%`} sub="horas agendadas ÷ expediente" tone="var(--primary)" />
+          <StatCard label="Faturamento recebido" value={brMoney(stats.faturado)} sub="parcelas + receitas pagas" tone="var(--primary)" />
         </div>
 
-        <div style={{ flex: 1, minHeight: 320, display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 20 }}>
+        <div className="split" style={{ flex: 1, minHeight: 320, ['--main' as string]: '1.4fr' }}>
           {/* Procedimentos mais realizados */}
           <div className="card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column' }}>
             <div style={{ font: "800 15px var(--font)", color: 'var(--ink)', marginBottom: 2 }}>Procedimentos mais realizados</div>
@@ -232,7 +233,7 @@ export default function Relatorios() {
         </div>
 
         {/* Relatórios segmentados */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 20 }}>
+        <div className="cols-3">
           {/* Faturamento por procedimento */}
           <div className="card" style={{ padding: '16px 20px' }}>
             <div style={{ font: "800 14px var(--font)", color: 'var(--ink)', marginBottom: 2 }}>Faturamento por procedimento</div>
@@ -308,16 +309,3 @@ export default function Relatorios() {
 
 const WD_LABEL = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
 const ORIGEM_COLORS = ['var(--primary)', 'var(--brand-pink)', '#d97706', '#16a34a', '#0f766e', '#64748b']
-
-function Kpi({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: string }) {
-  return (
-    <div className="card card-hover" style={{ padding: '17px 18px' }}>
-      <div style={{ font: "600 12.5px var(--font)", color: 'var(--muted)' }}>{label}</div>
-      <div className="tnum" style={{ font: "800 26px var(--font)", color: 'var(--ink)', margin: '7px 0 5px' }}><CountUp value={value} /></div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: tone }} />
-        <span style={{ font: "600 11.5px var(--font)", color: 'var(--slate)' }}>{sub}</span>
-      </div>
-    </div>
-  )
-}

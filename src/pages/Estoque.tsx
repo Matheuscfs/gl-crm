@@ -12,40 +12,49 @@ import { CountUp } from '../components/ui'
 import { useStore, precisaComprar, faltando, type EstoqueItem } from '../store'
 import { ESTOQUE_STATUS } from '../data'
 import { stockCatalog, type CatalogItem } from '../catalog'
-import { AREAS, AREA_PADRAO, areaInfo, INVENTARIO_DATA } from '../inventario'
+import { AREAS, AREA_PADRAO, areaInfo } from '../inventario'
 import { supabase } from '../lib/supabase'
-import { parseISO, brDate } from '../lib/dates'
+import { parseISO, brDate, todayISO } from '../lib/dates'
 import { exportCsv } from '../lib/exportCsv'
 import { useTablet } from '../lib/useTablet'
 import { DateField } from '../components/DateField'
 import EstoqueTablet from './estoque/EstoqueTablet'
 
 const GRID = '1.7fr 0.9fr 0.5fr 0.6fr 0.85fr 0.8fr 0.95fr 34px'
-const EMPTY = { item: '', cat: '', qtd: '', min: '', un: '', valor: '', marca: '', validade: '', lote: '', fornecedor: '', ent: INVENTARIO_DATA }
+/** Formulário vazio com a entrada datada de hoje (antes vinha sempre "17/08", a data do inventário). */
+const vazio = () => ({ item: '', cat: '', qtd: '', min: '', un: '', valor: '', marca: '', validade: '', lote: '', fornecedor: '', ent: brDate(todayISO()).slice(0, 5) })
 
 /** Dias até a validade (negativo = vencido). */
-const diasValidade = (iso: string) => Math.floor((parseISO(iso).getTime() - Date.now()) / 86400000)
+const diasValidade = (iso: string) => Math.round((parseISO(iso).getTime() - parseISO(todayISO()).getTime()) / 86400000)
 
 export default function Estoque() {
-  const { estoque, addEstoque, updateEstoque, registrarSaida, deleteEstoque, confirmarMinimos, movimentos } = useStore()
+  const { estoque, addEstoque, updateEstoque, registrarSaida, deleteEstoque, confirmarMinimos, movimentos, carga } = useStore()
   const { toast } = useToast()
   const tablet = useTablet()
   const [query, setQuery] = useState('')
   const [area, setArea] = useState('')
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState(EMPTY)
+  const [form, setForm] = useState(vazio)
   const [editing, setEditing] = useState<EstoqueItem | null>(null)
+  // chave do item como estava ao abrir: se o nome mudar no formulário, ainda acha o registro
+  const [editKey, setEditKey] = useState('')
+  const salvarEdicao = async () => {
+    if (!editing) return
+    const nome = editing.item.trim()
+    if (!nome) return toast('Informe o nome do material.', 'error')
+    if (estoque.some((e) => (e._id || e.item) !== editKey && e.item.trim().toLowerCase() === nome.toLowerCase())) return toast('Já existe um material com este nome.', 'error')
+    const ok = await updateEstoque(editKey, { ...editing, item: nome })
+    if (!ok) return toast('Não foi possível salvar o item.', 'error')
+    setEditing(null)
+    toast('Item atualizado.')
+  }
   const [saida, setSaida] = useState<{ item: EstoqueItem; qtd: string } | null>(null)
   const [confirmDel, setConfirmDel] = useState<EstoqueItem | null>(null)
   const [compras, setCompras] = useState(false)
   const [catalog, setCatalog] = useState<CatalogItem[]>(stockCatalog)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 450)
-    return () => clearTimeout(t)
-  }, [])
+  // esqueleto enquanto o banco carrega de verdade (antes era um atraso fixo de 450 ms)
+  const loading = carga === 'carregando'
 
   useEffect(() => {
     if (!supabase) return
@@ -94,14 +103,14 @@ export default function Estoque() {
     ]
   }, [estoque, listaCompras])
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.item.trim() || !form.qtd.trim()) {
       toast('Informe o material e a quantidade.', 'error')
       return
     }
+    if (saving) return
     setSaving(true)
-    setTimeout(() => {
-      addEstoque({
+    const ok = await addEstoque({
         item: form.item.trim(),
         cat: form.cat.trim() || 'Geral',
         qtd: form.qtd.trim(),
@@ -114,11 +123,24 @@ export default function Estoque() {
         fornecedor: form.fornecedor.trim(),
         ent: form.ent,
       })
-      setSaving(false)
-      setOpen(false)
-      setForm(EMPTY)
-      toast('Entrada registrada no estoque.')
-    }, 500)
+    setSaving(false)
+    if (!ok) return
+    setOpen(false)
+    setForm(vazio())
+    toast('Entrada registrada no estoque.')
+  }
+
+  /** Baixa manual: quantidade inteira, maior que zero e no máximo o saldo. */
+  const darBaixa = async () => {
+    if (!saida) return
+    const qtd = Number(String(saida.qtd).replace(',', '.'))
+    const saldo = Number(saida.item.qtd) || 0
+    if (!Number.isFinite(qtd) || qtd <= 0) return toast('Informe uma quantidade maior que zero.', 'error')
+    if (qtd > saldo) return toast(`Só há ${saldo} ${saida.item.un || 'itens'} de ${saida.item.item} no estoque.`, 'error')
+    const ok = await registrarSaida(saida.item._id ?? saida.item.item, qtd)
+    if (!ok) return
+    setSaida(null)
+    toast('Saída registrada.')
   }
 
   const textoCompras = () =>
@@ -143,7 +165,7 @@ export default function Estoque() {
   }
 
   const acoesItem = (e: EstoqueItem) => [
-    { label: 'Editar item', onClick: () => setEditing(e) },
+    { label: 'Editar item', onClick: () => { setEditing(e); setEditKey(e._id || e.item) } },
     { label: 'Registrar saída', onClick: () => setSaida({ item: e, qtd: '1' }) },
     ...(e.minAuto ? [{ label: 'Confirmar mínimo sugerido', onClick: () => { confirmarMinimos([e.item]); toast(`Mínimo de ${e.item} confirmado.`) } }] : []),
     { label: 'Excluir', danger: true, onClick: () => setConfirmDel(e) },
@@ -238,7 +260,7 @@ export default function Estoque() {
 
       {/* Editar item */}
       <Modal open={!!editing} onClose={() => setEditing(null)} title="Editar item" subtitle={editing?.item}
-        footer={<><Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button><Button onClick={() => { if (editing) { updateEstoque(editing.item, editing); setEditing(null); toast('Item atualizado.') } }}>Salvar</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button><Button onClick={() => void salvarEdicao()}>Salvar</Button></>}>
         {editing && (
           <>
             <Field label="Material"><TextInput value={editing.item} onChange={(e) => setEditing({ ...editing, item: e.target.value })} /></Field>
@@ -270,7 +292,7 @@ export default function Estoque() {
 
       {/* Registrar saída */}
       <Modal open={!!saida} onClose={() => setSaida(null)} title="Registrar saída" subtitle={saida?.item.item} width={380}
-        footer={<><Button variant="outline" onClick={() => setSaida(null)}>Cancelar</Button><Button onClick={() => { if (saida) { registrarSaida(saida.item.item, Number(saida.qtd) || 0); setSaida(null); toast('Saída registrada.') } }}>Dar baixa</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setSaida(null)}>Cancelar</Button><Button onClick={() => void darBaixa()}>Dar baixa</Button></>}>
         {saida && (
           <>
             <div style={{ font: "600 12.5px var(--font)", color: 'var(--slate)' }}>Em estoque: <b style={{ color: 'var(--ink)' }}>{saida.item.qtd} {saida.item.un}</b></div>
@@ -339,7 +361,7 @@ export default function Estoque() {
         onCompras={() => setCompras(true)}
         onEditar={setEditing}
         onMais={(e) => addEstoque({ ...e, qtd: '1', minAuto: e.minAuto })}
-        onMenos={(e) => registrarSaida(e.item, 1)}
+        onMenos={(e) => { if (Number(e.qtd) <= 0) return toast(`${e.item} já está zerado.`, 'error'); void registrarSaida(e._id ?? e.item, 1) }}
         modais={modais}
       />
     )
@@ -416,7 +438,7 @@ export default function Estoque() {
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.cat}</span>
                     </span>
                     <span className="tnum" style={{ font: "800 13px var(--font)", color: st.qty, textAlign: 'right' }}>{e.qtd}</span>
-                    <span className="tnum" style={{ font: "600 12px var(--font)", color: e.minAuto ? '#b0791f' : 'var(--muted)', textAlign: 'right' }} title={e.minAuto ? 'Mínimo sugerido — confirme na edição do item' : undefined}>
+                    <span className="tnum" style={{ font: "600 12px var(--font)", color: e.minAuto ? 'var(--amber-dark)' : 'var(--muted)', textAlign: 'right' }} title={e.minAuto ? 'Mínimo sugerido — confirme na edição do item' : undefined}>
                       {e.min}{e.minAuto ? '*' : ''}
                     </span>
                     <span style={{ textAlign: 'center' }}>
@@ -432,6 +454,7 @@ export default function Estoque() {
                         <span title={e.lote ? `Lote ${e.lote}` : undefined}>
                           <span className="tnum" style={{ display: 'block', font: "600 12px var(--font)", color }}>{brDate(e.validade)}</span>
                           {dias < 0 && <span style={{ font: "700 10px var(--font)", color: 'var(--danger-text)' }}>vencido</span>}
+                          {dias === 0 && <span style={{ font: "700 10px var(--font)", color: 'var(--amber-dark)' }}>vence hoje</span>}
                           {dias >= 0 && dias <= 60 && <span style={{ font: "700 10px var(--font)", color: 'var(--amber-dark)' }}>vence em {dias}d</span>}
                         </span>
                       )

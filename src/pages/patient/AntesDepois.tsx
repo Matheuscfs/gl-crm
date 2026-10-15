@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/Button'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { Modal } from '../../components/Modal'
+import { Field, TextInput } from '../../components/Field'
 import { useToast } from '../../components/Toast'
-import { useParams } from 'react-router-dom'
-import { useCollection, usePatientId } from '../../lib/useCollection'
+import { useCollection, usePatient } from '../../lib/useCollection'
 import { supabase } from '../../lib/supabase'
 import { uploadPatientPhoto } from '../../lib/storage'
 import { useGoogle } from '../../lib/GoogleProvider'
 import { uploadToDrive } from '../../lib/googleDrive'
-import { useStore } from '../../store'
-import { isSeedPatient } from '../../data'
 import { brDate, todayISO } from '../../lib/dates'
 import { SimulationEditor } from './SimulationEditor'
 import { PatientPhoto } from '../../components/PatientPhoto'
@@ -24,10 +24,14 @@ interface Marker { id: string; x: number; y: number; region: string; units: numb
 interface Session { id: string; date: string; label: string }
 
 const SEED_SESSIONS: Session[] = [
-  { id: 's1', date: '10/06/2026', label: 'Avaliação inicial' },
-  { id: 's2', date: '24/06/2026', label: 'Aplicação — 20U' },
-  { id: 's3', date: '08/07/2026', label: 'Retorno 15 dias' },
+  { id: 's1', date: '2026-06-10', label: 'Avaliação inicial' },
+  { id: 's2', date: '2026-06-24', label: 'Aplicação — 20U' },
+  { id: 's3', date: '2026-07-08', label: 'Retorno 15 dias' },
 ]
+
+/** Data da sessão em ISO para ordenar (aceita o "dd/mm/aaaa" de registros antigos). */
+const isoSessao = (d: string) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(d); return m ? `${m[3]}-${m[2]}-${m[1]}` : d }
+const dataSessao = (d: string) => brDate(isoSessao(d)) || d
 
 /** Ilustração em traço fino, por ângulo, enquanto não há foto enviada. */
 function FacePlaceholder({ label }: { label: string }) {
@@ -87,11 +91,33 @@ function GuideOverlay() {
 
 export default function AntesDepois() {
   const { toast } = useToast()
-  const { id } = useParams()
-  // sessões demo só para pacientes de demonstração — cadastro novo começa sem sessões
-  const isDemo = isSeedPatient(id ? decodeURIComponent(id) : '')
-  const [sessions, setSessions] = useState<Session[]>(isDemo ? SEED_SESSIONS : [])
-  const [activeSession, setActiveSession] = useState(isDemo ? 's3' : '')
+  const { patient: atual, patientId, demo: isDemo } = usePatient()
+  // sessões gravadas em photo_sessions; as de demonstração só aparecem em paciente fictício
+  const { rows: sessoesSalvas, add: addSessao, save: saveSessao, remove: removeSessao } = useCollection<Session>(
+    'photo_sessions',
+    patientId,
+    (r) => ({ id: r.id as string, date: (r.session_date as string) ?? '', label: (r.label as string) ?? '' }),
+    (s) => ({ session_date: s.date, label: s.label }),
+    isDemo ? SEED_SESSIONS : [],
+  )
+  const sessions = [...sessoesSalvas].sort((a, b) => isoSessao(a.date).localeCompare(isoSessao(b.date)))
+  const [activeSession, setActiveSession] = useState('')
+  // sem escolha, fica marcada a mais recente
+  const sessaoAtiva = sessions.find((s) => s.id === activeSession) ?? sessions[sessions.length - 1] ?? null
+  const [editSessao, setEditSessao] = useState<Session | null>(null)
+  const [excluirSessao, setExcluirSessao] = useState<Session | null>(null)
+  const salvarSessao = async () => {
+    if (!editSessao) return
+    const item = { date: editSessao.date || todayISO(), label: editSessao.label.trim() || 'Sessão' }
+    if (!editSessao.id) {
+      const ok = await addSessao(item)
+      if (ok) { setActiveSession(''); toast('Sessão criada.') } else toast('Não foi possível criar a sessão.', 'error')
+    } else {
+      const ok = await saveSessao({ id: editSessao.id, ...item })
+      toast(ok ? 'Sessão atualizada.' : 'Não foi possível salvar a sessão.', ok ? 'success' : 'error')
+    }
+    setEditSessao(null)
+  }
   const [angle, setAngle] = useState('Frontal')
   const [guide, setGuide] = useState(true)
   const [mode, setMode] = useState<'lado' | 'slider'>('lado')
@@ -101,10 +127,8 @@ export default function AntesDepois() {
   const [markMode, setMarkMode] = useState(false)
   const [region, setRegion] = useState(REGIONS[0])
   const [units, setUnits] = useState(4)
-  const patientId = usePatientId()
   const google = useGoogle()
-  const { patients } = useStore()
-  const patientName = patients.find((p) => p.name === (id ? decodeURIComponent(id) : ''))?.name ?? 'Paciente'
+  const patientName = atual?.name ?? 'Paciente'
   const { rows: markers, add: addMk, remove: removeMk } = useCollection<Marker>(
     'aesthetic_markers',
     patientId,
@@ -183,7 +207,12 @@ export default function AntesDepois() {
     addMk({ x, y, region, units, angle })
     toast(`${units}U em ${region}.`)
   }
-  const clearMarkers = () => markers.forEach((m) => removeMk(m.id))
+  const [confirmLimpar, setConfirmLimpar] = useState(false)
+  const clearMarkers = () => setConfirmLimpar(true)
+  const limparDeVez = async () => {
+    const oks = await Promise.all(markers.map((m) => removeMk(m.id)))
+    if (oks.every(Boolean)) toast('Marcadores removidos.')
+  }
 
   const totalUnits = markers.reduce((s, m) => s + m.units, 0)
   const simAvg = Object.values(sim).reduce((a, b) => a + b, 0) / 4
@@ -209,7 +238,7 @@ export default function AntesDepois() {
             {ANGLES.map((a) => <button key={a} className={`seg-item${a === angle ? ' active' : ''}`} onClick={() => setAngle(a)}>{a}</button>)}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            <button className="chip" onClick={() => setGuide((g) => !g)} style={{ height: 34, padding: '0 12px', borderRadius: 9, border: `1px solid ${guide ? 'var(--primary-border)' : 'var(--border-strong)'}`, background: guide ? 'var(--primary-bg)' : '#fff', color: guide ? 'var(--primary-dark)' : 'var(--slate)', font: "700 12px var(--font)" }}>Guia de enquadramento</button>
+            <button className="chip" onClick={() => setGuide((g) => !g)} style={{ height: 34, padding: '0 12px', borderRadius: 9, border: `1px solid ${guide ? 'var(--primary-border)' : 'var(--border-strong)'}`, background: guide ? 'var(--primary-bg)' : 'var(--surface)', color: guide ? 'var(--primary-dark)' : 'var(--slate)', font: "700 12px var(--font)" }}>Guia de enquadramento</button>
             <div className="seg">
               <button className={`seg-item${mode === 'lado' ? ' active' : ''}`} onClick={() => setMode('lado')}>Lado a lado</button>
               <button className={`seg-item${mode === 'slider' ? ' active' : ''}`} onClick={() => setMode('slider')}>Sobreposição</button>
@@ -268,16 +297,34 @@ export default function AntesDepois() {
           <h2 className="panel-title sm" style={{ margin: '4px 0 8px' }}>Sessões fotográficas</h2>
           <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
             {sessions.map((s) => (
-              <button key={s.id} className="card-hover" onClick={() => setActiveSession(s.id)} style={{ flex: 'none', width: 130, textAlign: 'left', padding: 8, borderRadius: 12, border: `1.5px solid ${s.id === activeSession ? 'var(--primary)' : 'var(--line)'}`, background: 'var(--surface)', cursor: 'pointer' }}>
+              <button key={s.id} className="card-hover" onClick={() => setActiveSession(s.id)} aria-pressed={s.id === sessaoAtiva?.id} style={{ flex: 'none', width: 130, textAlign: 'left', padding: 8, borderRadius: 12, border: `1.5px solid ${s.id === sessaoAtiva?.id ? 'var(--primary)' : 'var(--line)'}`, background: 'var(--surface)', cursor: 'pointer' }}>
                 <div style={{ aspectRatio: '1/1', borderRadius: 8, background: 'linear-gradient(160deg,var(--chip-bg),var(--chip-bg))', marginBottom: 6, position: 'relative', overflow: 'hidden' }}><FacePlaceholder label="" /></div>
-                <div style={{ font: "700 11px var(--font)", color: 'var(--ink)' }}>{s.date}</div>
+                <div style={{ font: "700 11px var(--font)", color: 'var(--ink)' }}>{dataSessao(s.date)}</div>
                 <div style={{ font: "600 10px var(--font)", color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</div>
               </button>
             ))}
-            <button className="card-hover" onClick={() => { const id = `s${sessions.length + 1}`; setSessions((p) => [...p, { id, date: brDate(todayISO()), label: 'Nova sessão' }]); setActiveSession(id); toast('Sessão criada.') }} style={{ flex: 'none', width: 130, borderRadius: 12, border: '1.5px dashed var(--primary-border)', background: 'var(--bg-soft)', color: 'var(--primary-dark)', font: "700 12px var(--font)", cursor: 'pointer' }}>+ Nova sessão</button>
+            <button className="card-hover" onClick={() => setEditSessao({ id: '', date: todayISO(), label: sessions.length ? 'Retorno' : 'Avaliação inicial' })} style={{ flex: 'none', width: 130, borderRadius: 12, border: '1.5px dashed var(--primary-border)', background: 'var(--bg-soft)', color: 'var(--primary-dark)', font: "700 12px var(--font)", cursor: 'pointer' }}>+ Nova sessão</button>
           </div>
+          {sessaoAtiva && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, font: '500 12px var(--font)', color: 'var(--muted)' }}>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dataSessao(sessaoAtiva.date)} · {sessaoAtiva.label}</span>
+              <Button variant="ghost" size="sm" onClick={() => setEditSessao({ ...sessaoAtiva, date: isoSessao(sessaoAtiva.date) })}>Editar</Button>
+              <Button variant="ghost" size="sm" onClick={() => setExcluirSessao(sessaoAtiva)}>Excluir</Button>
+            </div>
+          )}
         </div>
       </div>
+
+      <Modal open={!!editSessao} onClose={() => setEditSessao(null)} title={editSessao?.id ? 'Editar sessão' : 'Nova sessão fotográfica'} width={400}
+        footer={<><Button variant="outline" onClick={() => setEditSessao(null)}>Cancelar</Button><Button onClick={() => void salvarSessao()}>{editSessao?.id ? 'Salvar' : 'Criar sessão'}</Button></>}>
+        {editSessao && <>
+          <Field label="Data"><TextInput type="date" value={editSessao.date} onChange={(e) => setEditSessao({ ...editSessao, date: e.target.value })} /></Field>
+          <Field label="Descrição"><TextInput value={editSessao.label} onChange={(e) => setEditSessao({ ...editSessao, label: e.target.value })} placeholder="Ex.: Aplicação — 20U" /></Field>
+        </>}
+      </Modal>
+      <ConfirmDialog open={!!excluirSessao} onClose={() => setExcluirSessao(null)}
+        onConfirm={() => { const s = excluirSessao; if (s) void removeSessao(s.id).then((ok) => toast(ok ? 'Sessão excluída.' : 'Não foi possível excluir a sessão.', ok ? 'success' : 'error')) }}
+        title="Excluir sessão" message={`A sessão de ${excluirSessao ? dataSessao(excluirSessao.date) : ''} sai da lista. As fotos enviadas continuam na ficha.`} confirmLabel="Excluir" />
 
       {/* Painel lateral */}
       <aside className="home-aside wrap-row" style={{ gap: 14 }}>
@@ -301,7 +348,7 @@ export default function AntesDepois() {
             <input className="field-input" type="number" value={units} onChange={(e) => setUnits(Number(e.target.value))} style={{ width: 64 }} />
           </div>
           <Button size="sm" block variant={markMode ? 'primary' : 'teal-soft'} onClick={() => setMarkMode((v) => !v)}>{markMode ? 'Clique na foto para marcar…' : 'Adicionar marcador'}</Button>
-          {markers.length > 0 && <button className="chip" onClick={clearMarkers} style={{ marginTop: 8, font: "700 11px var(--font)", color: '#d64b45', background: 'transparent' }}>Limpar marcadores</button>}
+          {markers.length > 0 && <button className="chip" onClick={clearMarkers} style={{ marginTop: 8, font: "700 11px var(--font)", color: 'var(--danger-text)', background: 'transparent' }}>Limpar marcadores</button>}
         </div>
 
         <div className="panel">
@@ -319,6 +366,9 @@ export default function AntesDepois() {
       </div>
 
       {editorOpen && before && <SimulationEditor src={before} onClose={() => setEditorOpen(false)} onSave={onSaveProjection} />}
+
+      <ConfirmDialog open={confirmLimpar} onClose={() => setConfirmLimpar(false)} confirmLabel="Limpar"
+        onConfirm={() => void limparDeVez()} title="Limpar marcadores" message={`Remover os ${markers.length} marcadores de aplicação desta foto?`} />
     </div>
   )
 }

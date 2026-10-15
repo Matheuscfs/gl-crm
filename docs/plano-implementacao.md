@@ -40,9 +40,15 @@ Todas as telas existem e o typecheck passa limpo. O que falta é de três tipos:
   variáveis `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_DEMO_DATA=0`
   (produção e preview). Produção em https://gl-crm-delta.vercel.app, publicada manualmente a
   partir de `front/fundacao-responsiva`; pushes em `main` passam a publicar sozinhos.
-- [ ] Criar no Supabase Auth o usuário da Dra. (Authentication → Users → Add user).
-- [ ] Authentication → URL Configuration: Site URL `https://gl-crm-delta.vercel.app`.
+**Falta fazer no painel (só o dono da conta Supabase consegue):**
+- [ ] SQL Editor: aplicar `0026_prontuario_automacao.sql` e depois `0027_equipe_acesso.sql`.
+- [ ] Authentication → URL Configuration: Site URL `https://gl-crm-delta.vercel.app` e, em
+      Redirect URLs, `https://gl-crm-delta.vercel.app/**` (links de confirmação e de nova senha).
+- [ ] Authentication → Sign In / Providers: cadastro por e-mail ligado. A Dra. cria a conta pela
+      tela "Criar conta"; depois da 0027 o primeiro login vira administradora e libera a equipe.
 - [ ] Rodar o Security Advisor no painel do projeto novo.
+- [ ] (Opcional, automação) publicar as Edge Functions, cadastrar os segredos (Meta, Asaas,
+      `CRON_SECRET`) e rodar `supabase/automacao/agendar_cron.sql` — guia em `supabase/functions/README.md`.
 
 ---
 
@@ -91,8 +97,20 @@ Proposta aprovada em 14/10/2026 no canvas https://claude.ai/artifact/Ht1SoizN7wQ
 - [x] Mapa facial volta a 2D (pedido de 14/10): rosto ilustrado (pele com degradê, sombreamento,
       olhos, lábios, cabelo preso), zonas clicáveis (também pelo teclado) e pontos de aplicação
       (~1 a cada 2U); o busto 3D e o arquivo do MediaPipe saíram.
+- [x] Login no modelo do painel Aura+ (15/10): título em dois tons, cartões ilustrativos em
+      sequência, cartão de entrada com olho na senha, aviso de Caps Lock e "Esqueceu a senha?"
+      no rótulo; contêiner de 1160 px (não espalha em tela larga), uma coluna no tablet e no celular.
+      Logo da Dra. sendo escrita (`LogoAnimada`): máscara SVG segue o traço do G e do L sobre a
+      imagem original, o texto aparece da esquerda para a direita e a borboleta voa e pousa na
+      ponta do L (camadas recortadas do `logo-gl.png`; parada com "reduzir movimento").
+- [x] Fontes e cores do login no app (15/10): tokens `--title-2` e `--grad-primary`; títulos em
+      700 com entreletra apertada e o nome da Dra. na segunda cor (Início e Resumo); painéis com
+      raio 22 e títulos em 700; degradê violeta no botão principal, nas chamadas (`.btn-cta`),
+      na pílula do menu e no contador; brilhos do fundo na mesma disposição do login. Corrigida
+      a `.legend-row` duplicada (a do odontograma virou `.cond-legend` e quebrava a legenda do
+      Início e da Agenda).
 
-## Fase 1 — Front-end: fundação visual e responsiva  ← em andamento
+## Fase 1 — Front-end: fundação visual e responsiva
 
 - [x] **Tokens** em `styles.css`: `--primary*` (alias dos `--teal*`, que hoje guardam azul),
       `--brand-pink`, `--danger`/`--success` semânticos, `--text-2` com contraste AA
@@ -102,17 +120,16 @@ Proposta aprovada em 14/10/2026 no canvas https://claude.ai/artifact/Ht1SoizN7wQ
 - [x] **Anel de foco visível** (hoje ~1,5:1, reprova WCAG 1.4.11).
 - [x] **Fonte com fallback**: 362 `font: "… 'Plus Jakarta Sans'"` inline sem família genérica →
       texto em Times enquanto a fonte carrega ou offline. Trocar por `var(--font)`.
-- [ ] **Grades responsivas**: classes `.grid-kpi`, `.split`, `.split-aside`, `.field-row` que
-      colapsam; migrar as grades de layout inline. Feito: Dashboard, Financeiro, Dados, Anamnese,
-      Odontograma, Planos, MapaFacial, AntesDepois e demais abas da ficha. Falta: Estoque, CRM,
-      Configurações, FichaProcedimento, Relatórios (no celular as tabelas rolam de lado).
-- [ ] **Shell**: "Sair" na folha "Mais" (hoje não há como sair no tablet/celular); folha fecha
+- [x] **Grades responsivas**: classes `.grid-kpi`, `.split`, `.split-aside`, `.field-row` que
+      colapsam; todas as telas migradas (Relatórios e Configurações por último; Estoque e
+      FichaProcedimento rolam a tabela de lado no celular com `.table-x`).
+- [x] **Shell**: "Sair" na folha "Mais" (hoje não há como sair no tablet/celular); folha fecha
       ao tocar na página atual e com Esc; menu lateral rola em telas baixas (1366×768 esconde
       Ajuda/Configurações/avatar); Esc fecha só a camada de cima (hoje fecha popup + modal).
-- [ ] **Login**: Enter no modo "Esqueci minha senha" tenta logar.
+- [x] **Login**: Enter no modo "Esqueci minha senha" tenta logar.
 - [x] **Textos**: Dashboard diz "Bom dia" a qualquer hora; no modo demo o Resumo diz
       "dados sincronizados com o Supabase" e fica preso em "conectando ao banco…".
-- [ ] **A11y básica**: `aria-label` nos botões só-ícone (‹ › da Agenda, sino, avatar),
+- [x] **A11y básica**: `aria-label` nos botões só-ícone (‹ › da Agenda, sino, avatar),
       toast com `aria-live` e acima do overlay de impressão, busca do iPhone com 16 px.
 
 ## Fase 2 — Front-end: parar de fingir (sem migração de banco)
@@ -121,93 +138,128 @@ Proposta aprovada em 14/10/2026 no canvas https://claude.ai/artifact/Ht1SoizN7wQ
 - [x] Dashboard "Contatar"/"Reavaliar" → `waLink` + `window.open` (como a Agenda); `div` → `button`.
 - [x] FinanceiroPaciente "Enviar cobrança" → agora abre o WhatsApp com o lembrete da parcela.
 - [x] Documentos "Baixar"/"Renomear"; Odontograma "Compartilhar"/"Exportar imagem"/"Filtrar" → removidos (só mostravam aviso).
-- [ ] Salvamentos com `setTimeout` (Pacientes, Agenda, CRM, Anamnese, Estoque): toast só depois da resposta.
+- [x] Salvamentos com `setTimeout` (Pacientes, Agenda, CRM, Anamnese, Estoque): toast só depois da resposta.
 
 **Demonstração vazando para dados reais**
-- [ ] `templates.tsx:32,105` mistura `DEMO_PED`/`DEMO_ADULT` na anamnese real do documento.
-- [ ] `templates.tsx` nomes fictícios como padrão e consentimentos (TCLE, uso de imagem) já marcados.
+- [x] `templates.tsx:32,105` mistura `DEMO_PED`/`DEMO_ADULT` na anamnese real do documento.
+- [x] `templates.tsx` nomes fictícios como padrão e consentimentos (TCLE, uso de imagem) já marcados.
 - [x] `MapaFacial.tsx:21` começava com testa 10 / glabela 8 / pés de galinha 6+6 para todo paciente (agora só na demonstração).
-- [ ] `data.ts:168` `isSeedPatient` ignora `DEMO_DATA` (homônimo do seed herda plano/anamnese demo).
-- [ ] `Configuracoes.tsx:24-36` CNPJ/telefone/equipe fictícios podem ser gravados e sair no recibo.
+- [x] `data.ts:168` `isSeedPatient` ignora `DEMO_DATA` (homônimo do seed herda plano/anamnese demo).
+- [x] `Configuracoes.tsx:24-36` CNPJ/telefone/equipe fictícios podem ser gravados e sair no recibo.
 
 **Datas**
-- [ ] `DocKit.tsx:141` assinatura "17 de julho de 2026" em todo documento.
-- [ ] `Estoque.tsx:24` data de entrada fixa `'17/08'`.
+- [x] `DocKit.tsx:141` assinatura "17 de julho de 2026" em todo documento.
+- [x] `Estoque.tsx:24` data de entrada fixa `'17/08'`.
 - [x] `Financeiro.tsx:117` recibo datado no vencimento, não no pagamento (agora sai com a data da emissão).
 - [x] Parcelas de demonstração com vencimento fixo em jun/jul → relativas a hoje (o mês atual aparecia vazio).
 - [x] `data.ts:194` `idadeLabel` com `new Date('AAAA-MM-DD')` (UTC → dia anterior no Brasil).
-- [ ] `Estoque.tsx:27,428` validade: item que vence hoje aparece "vencido".
-- [ ] `CRM.tsx:243` preview do WhatsApp fixo "amanhã, 19/07".
+- [x] `Estoque.tsx:27,428` validade: item que vence hoje aparece "vencido".
+- [x] `CRM.tsx:243` preview do WhatsApp fixo "amanhã, 19/07".
 
 **Renomear e valores**
 - [x] `Pacientes.tsx:127`: atualizava pelo nome novo → nada salvava (corrigido; agora também bloqueia nome duplicado).
-- [ ] `Estoque.tsx:241`: mesmo bug ao renomear material.
-- [ ] `Dados.tsx:41`: renomear quebra a rota (URL usa o nome).
-- [ ] `money.ts:4` / `fmt.ts:8` `parseMoney`: "180.50" vira 18050 (teclado decimal do tablet); aceita negativo.
+- [x] `Estoque.tsx:241`: mesmo bug ao renomear material.
+- [x] `Dados.tsx:41`: renomear quebra a rota (URL usa o nome).
+- [x] `money.ts:4` / `fmt.ts:8` `parseMoney`: "180.50" vira 18050 (teclado decimal do tablet); aceita negativo.
 
 **Agenda**
 - [x] Setas não andam na visão Diária; Mensal ancorada na segunda-feira da semana.
 - [x] Data vazia aceita (vira 1900 e o agendamento some).
-- [ ] Redimensionar grava no banco a cada `pointermove` (o fim da grade já usa `AGENDA_END` e respeita o expediente).
-- [ ] "Cancelar consulta" apaga o registro em vez de marcar `desmarcado`.
+- [x] Redimensionar grava no banco a cada `pointermove` (o fim da grade já usa `AGENDA_END` e respeita o expediente).
+- [x] "Cancelar consulta" apaga o registro em vez de marcar `desmarcado`.
 
 **Regras que a tela mostra errado**
 - [x] "Retorno vencido" depende do campo `late`, que nenhum código grava → nunca aparece.
       Derivar de `next` vs hoje; concluir atendimento deve atualizar `last`/`next`.
 - [x] Idade congelada no texto do cadastro → calcular da data de nascimento (lista, filtro e exportação).
-- [ ] Relatórios "Origem de leads" usa o texto livre do lead como origem ("19/07", "Plano #218").
+- [x] Relatórios "Origem de leads" usa o texto livre do lead como origem ("19/07", "Plano #218").
 - [x] "Atendimentos hoje" e visão Mensal contam desmarcados.
 
 **Impressão**
-- [ ] Odontograma "Imprimir" sai em branco (CSS de print esconde tudo fora de `.doc-sheet`).
-- [ ] Recibo com cabeçalho e assinatura duplicados.
-- [ ] Dados da clínica fixos no código (DocKit, Recibo, Evolução) → `useClinic()`.
-- [ ] `@media print`: overlay estático para pacotes com várias folhas (confirmar com teste real).
+- [x] Odontograma "Imprimir" sai em branco (CSS de print esconde tudo fora de `.doc-sheet`).
+- [x] Recibo com cabeçalho e assinatura duplicados.
+- [x] Dados da clínica fixos no código (DocKit, Recibo, Evolução) → `useClinic()`.
+- [x] `@media print`: overlay estático para pacotes com várias folhas — conferido com PDF real (Chrome):
+      pacote adulto = 3 folhas em 3 páginas; anamnese pediátrica longa continua na 2ª página com a
+      mesma margem. Achado no teste: ao imprimir, a largura muda para a da folha A4, o app trocava de
+      layout (desktop ↔ tablet) e desmontava o documento — **toda impressão em tela larga saía em
+      branco**. As media queries agora ficam congeladas durante a impressão (`useTablet.ts`).
 
 **Confirmação e validação**
 - [x] ConfirmDialog em: item do plano, lançamento, aprovar plano.
-- [ ] ConfirmDialog em: atendimento, responsável, "Limpar marcadores", remover acesso, marcar pago.
+- [x] ConfirmDialog em: atendimento, responsável, "Limpar marcadores", remover acesso. Marcar pago
+      ficou sem confirmação porque tem "Reabrir" logo ao lado (desfazer em vez de perguntar).
 - [x] Validar desconto do plano (0…subtotal).
-- [ ] Validar: quantidades de estoque (> 0, ≤ saldo), unidades do mapa (> 0).
+- [x] Validar: quantidades de estoque (> 0, ≤ saldo), unidades do mapa (> 0).
 
 ## Fase 3 — Store: carregamento, erros e identidade
 
-- [ ] Expor `loading`/`error` no store; `ErrorState` com "Tentar de novo" (existe e não é usado);
+- [x] Expor `loading`/`error` no store; `ErrorState` com "Tentar de novo" (existe e não é usado);
       ficha do paciente sem "Paciente não encontrado" durante o F5.
-- [ ] Erros do Supabase com toast + rollback (store, `useCollection`, Financeiro, CRM).
-- [ ] Ids `tmp…`: bloquear escrita até o id real chegar (hoje perde edição em silêncio).
-- [ ] **Identidade por `_id`**: rota `/pacientes/:id`, update/delete por id, `key` por id;
+- [x] Erros do Supabase com toast + rollback (store, `useCollection`, Financeiro, CRM).
+- [x] Ids `tmp…`: bloquear escrita até o id real chegar (hoje perde edição em silêncio).
+- [x] **Identidade por `_id`**: rota `/pacientes/:id`, update/delete por id, `key` por id;
       `whats.ts` casa só primeiro nome → mensagem pode ir ao responsável errado (LGPD).
-- [ ] Concluir atendimento: confirmação + idempotência (hoje cobra e baixa estoque de novo
+- [x] Concluir atendimento: confirmação + idempotência (hoje cobra e baixa estoque de novo
       se o status voltar a "Concluído") e não cobrar procedimento já coberto por plano aprovado.
-- [ ] Procedimento casado por `includes` no nome ("Consulta" cobra "1ª consulta / avaliação").
-- [ ] `select('*')` sem paginação: limite de 1000 linhas → agenda por janela de datas.
-- [ ] Performance: `value` do store recriado a cada render (re-render do app a cada `pointermove`).
+- [x] Procedimento casado por `includes` no nome ("Consulta" cobra "1ª consulta / avaliação").
+- [x] `select('*')` sem paginação: limite de 1000 linhas → agenda por janela de datas.
+- [x] Performance: `value` do store recriado a cada render (re-render do app a cada `pointermove`).
 
 ## Fase 4 — Precisa de migração no banco
 
-O MCP não alcança o projeto `qkgmlmlzahcsmxqwhgjr`: cada item vira um arquivo `0026+` em
-`supabase/migrations/` para aplicar à mão no SQL Editor.
+O MCP não alcança o projeto `qkgmlmlzahcsmxqwhgjr`: tudo foi para `0026_prontuario_automacao.sql`
+(testada em Postgres embutido junto com 0001–0025 e a 0027), a aplicar à mão no SQL Editor.
 
-- [ ] `installments.pago_em` — faturamento pela data de pagamento e recibo na data certa.
-- [ ] `appointments.patient_id`, `procedimento_id`, `gcal_id`, `cobrado_em`.
-- [ ] Movimentações de estoque persistidas (hoje só em memória).
-- [ ] `photo_sessions` (tabela já existe na 0004) ligada às fotos; `documents.storage_path` (upload real).
-- [ ] `clinic_settings.cidade` (PIX usa o endereço cortado em 15 caracteres como cidade).
+- [x] `installments.pago_em` — faturamento pela data de pagamento e recibo na data certa.
+- [x] `appointments.patient_id`, `procedimento_id`, `gcal_id`, `cobrado_em`.
+- [x] Movimentações de estoque persistidas (hoje só em memória).
+- [x] `photo_sessions` (tabela já existe na 0004) ligada às fotos; `documents.storage_path` (upload real).
+- [x] `clinic_settings.cidade` (PIX usa o endereço cortado em 15 caracteres como cidade).
 
 ## Fase 5 — Consistência e limpeza
 
-- [ ] Hex inline → tokens (804 cores; `#26324a` 102×, `#8b93a7` 83×), tela a tela.
-- [ ] Unificar: `PrintDoc`/`DocumentViewer`; `StatCard`/`FinCard`/`Kpi`;
-      `SuggestInput`/`PatientPicker`/`ProcPicker`; um helper de moeda, de data, meses e aniversário.
-- [ ] Variante `danger` no Button; `ConfirmDialog` com `cancelLabel`; Modal com portal e
-      devolução de foco; popovers (calendário) em portal para não cortar dentro do modal.
+- [x] Hex inline → tokens: de 804 para 131 cores fixas nas telas, todas de propósito — cor de dado
+      (regiões da face, gráficos, situação), ilustração, ícones no estilo Ajustes do iPhone, a prévia
+      do WhatsApp e o papel impresso. As que quebravam o tema escuro (caixas claras em Pacientes,
+      legenda da Agenda, texto vinho em Planos) viraram tokens.
+- [x] Unificar: `StatCard`/`FinCard`/`Kpi` (Relatórios usa o `StatCard`; `FinCard` saiu); um helper de
+      moeda (`money.ts`); `PrintDoc` e `DocumentViewer` sobre o mesmo `DocOverlay` (portal, Esc, nome
+      do PDF); `PatientPicker`/`ProcPicker` da Agenda sobre o `SuggestInput` (setas + Enter, busca sem acento).
+- [x] Variante `danger` no Button; `ConfirmDialog` com `cancelLabel`; Modal com portal e devolução de
+      foco; calendário, menu "⋮", filtros e sugestões num `Popover` por portal (não cortam dentro de
+      modal, abrem para cima sem espaço). Clicar fora agora fecha também dentro de modal.
 - [x] Notificações e busca global no Layout (hoje só no Dashboard desktop); "lido" com período.
-- [ ] PWA: `registerType: 'prompt'` + toast "Nova versão" (hoje recarrega sozinho e perde modal aberto).
-- [ ] Odontograma acessível por teclado e com arcadas FDI completas (faltam 13-15, 17, 18…).
-- [ ] CSV: neutralizar células que começam com `= + - @`.
-- [ ] Código morto: mocks de `data.ts`, `Placeholder.tsx`, `public/logo.png` (224 KB no cache do SW),
+- [x] PWA: `registerType: 'prompt'` + toast "Nova versão" (hoje recarrega sozinho e perde modal aberto).
+- [x] Odontograma acessível por teclado e com arcadas FDI completas (faltam 13-15, 17, 18…).
+- [x] CSV: neutralizar células que começam com `= + - @`.
+- [x] Código morto: mocks de `data.ts`, `Placeholder.tsx`, `public/logo.png` (224 KB no cache do SW),
       `.doc-grid2/3`, CSS de sidebar ≤ 1024 px; README ainda "Sorriso Miúdo";
       `crm-odontopedi-trico-web/` versionado (2,6 MB).
-- [ ] Régua do CRM: a tela promete "Dispara 48h antes" e nada dispara → deixar explícito que é
+- [x] Régua do CRM: a tela promete "Dispara 48h antes" e nada dispara → deixar explícito que é
       manual até a decisão sobre a WhatsApp Cloud API.
+
+## Fase 6 — Pedido "vamos fazer tudo" (15/10/2026)
+
+O que faltava para o consultório odontológico e para automatizar, já no código:
+
+- [x] **Prontuário**: evolução e atendimento não se apagam (anular com motivo, riscado e visível);
+      histórico de alterações por registro (`audit_log`); anexos privados (radiografias, exames) no
+      bucket `patient-files`.
+- [x] **Documentos**: receituário (simples e controle especial), atestado e declaração de
+      comparecimento, com data de hoje, dados e assinatura vindos de Configurações.
+- [x] **Odontograma** por face (M, D, O/I, V, L/P) em decídua, mista e permanente completas, com
+      impressão das faces; índices pediátricos (risco de cárie, placa, flúor, selantes).
+- [x] **Harmonização**: aplicações com produto, lote e validade; sessões de fotos gravadas.
+- [x] **Automação** (Edge Functions + pg_cron): confirmação com resposta "1"/"2" que muda a Agenda,
+      cobrança D-3/D0/D+3 com PIX, retorno, retoque, aniversário, pós-atendimento e alerta de
+      estoque pelo WhatsApp oficial; cobrança Asaas (PIX/boleto) com baixa automática.
+- [x] **Agendamento online** em `/agendar` com horários livres; a clínica aceita ou recusa.
+- [x] **Receita Saúde**: texto pronto do recibo e marcação de lançado.
+- [x] **Acesso**: criar conta, esqueci a senha, nova senha pelo link e "acesso pendente" para quem
+      não está na equipe (migração 0027).
+- [x] **Configurações** no modelo Aura+ enviado em 15/10: abas em pílula, cartões "Meus dados",
+      "Quadro da clínica", "Dados cadastrais" e "Recebimentos"; nome e especialidade de quem
+      assina vão para os documentos.
+- [x] Pacote principal de 924 KB → 141 KB: telas por rota (`React.lazy`, recarrega uma vez se um deploy
+      apagar o pacote antigo) e React/Supabase em pacotes próprios que ficam no cache entre versões.

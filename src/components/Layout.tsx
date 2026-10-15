@@ -199,7 +199,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   if (tablet) {
     return (
       <>
-        <TabletShell onHelp={() => setOnboarding(true)}>{children}</TabletShell>
+        <TabletShell onHelp={() => setOnboarding(true)}><AvisoCarga />{children}</TabletShell>
         <Onboarding open={onboarding} onClose={() => setOnboarding(false)} />
       </>
     )
@@ -210,9 +210,23 @@ export default function Layout({ children }: { children: ReactNode }) {
       <Sidebar compact={compact} animating={animating} onToggle={toggle} onHelp={() => setOnboarding(true)} />
       <div className="main">
         <AppBar />
+        <AvisoCarga />
         {children}
       </div>
       <Onboarding open={onboarding} onClose={() => setOnboarding(false)} />
+    </div>
+  )
+}
+
+/** Se a carga do banco falhar, avisa no topo (com "Tentar de novo") em vez de mostrar telas vazias. */
+function AvisoCarga() {
+  const { carga, erroCarga, recarregar } = useStore()
+  if (carga !== 'erro') return null
+  return (
+    <div className="notice carga-aviso" role="alert">
+      <Icon name="alert" size={18} />
+      <p className="notice-text"><b>Parte dos dados não carregou do banco.</b> O que aparece pode estar incompleto{erroCarga ? ` (${erroCarga})` : ''}.</p>
+      <button className="btn-cta sm" onClick={recarregar}>Tentar de novo</button>
     </div>
   )
 }

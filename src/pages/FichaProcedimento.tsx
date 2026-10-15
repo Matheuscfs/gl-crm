@@ -165,7 +165,7 @@ export default function FichaProcedimento() {
                         emptyText="Sem correspondência no estoque."
                         onChange={(v) => setLine(idx, { item: v })}
                       />
-                      <div style={{ font: "600 10.5px var(--font)", color: stock ? 'var(--green-dark)' : '#c48a1a', marginTop: 3 }}>
+                      <div style={{ font: "600 10.5px var(--font)", color: stock ? 'var(--green-dark)' : 'var(--amber-dark)', marginTop: 3 }}>
                         {stock ? `saldo: ${stock.qtd} ${stock.un}` : l.item.trim() ? 'não cadastrado no estoque' : ' '}
                       </div>
                     </div>

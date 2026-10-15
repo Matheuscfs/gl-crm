@@ -48,14 +48,15 @@ export default function PatientHeader({
     if (!patientId) return
     const url = await uploadAvatar(patientId, file)
     if (!url) return toast('Não foi possível enviar a foto.', 'error')
-    updatePatient(patient.name, { photoUrl: url })
+    const ok = await updatePatient(patientId, { photoUrl: url })
+    if (!ok) return
     toast('Foto do paciente atualizada.')
   }
   const isChild = perfil === 'pediatrico' // só pediátrico tem responsável
   const anamnese = useAnamnese(patientId ?? null)
   const derived = alertsFromAnamnese(anamnese, patient.perfil)
   // alertas fixos de demonstração só nos pacientes seed; cadastro novo deriva 100% da anamnese preenchida
-  const alerts = derived.length ? derived : isSeedPatient(patient.name) ? (est ? EST_ALERTS : PED_ALERTS) : []
+  const alerts = derived.length ? derived : isSeedPatient(patient) ? (est ? EST_ALERTS : PED_ALERTS) : []
   const idade = (patient.birthdate ? idadeLabel(patient.birthdate) : '') || (patient.age !== '—' ? patient.age : '')
   const diasVencido = diasDeRetornoVencido(patient)
   const temAnamnese = tabs.some((t) => t.slug === 'anamnese')

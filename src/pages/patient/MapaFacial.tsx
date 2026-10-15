@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Button } from '../../components/Button'
+import { Modal } from '../../components/Modal'
+import { Field, FieldRow, TextInput, Textarea } from '../../components/Field'
+import { DateField } from '../../components/DateField'
+import { SuggestInput } from '../../components/SuggestInput'
 import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
-import { usePatientId } from '../../lib/useCollection'
-import { useParams } from 'react-router-dom'
-import { DEMO_DATA } from '../../lib/demo'
-import { isSeedPatient } from '../../data'
+import { esquema } from '../../lib/sync'
+import { useCollection, usePatient } from '../../lib/useCollection'
+import { useStore } from '../../store'
+import { brDate, todayISO } from '../../lib/dates'
+
+/** Aplicação registrada: produto, lote e validade de cada sessão (rastreabilidade). */
+interface Aplicacao { id: string; data: string; produto: string; lote: string; validade: string; zonas: Record<string, number>; unidades: number; obs: string }
 
 /** Zona de aplicação no desenho (viewBox 300×380, rosto de frente). `par`: a zona existe dos dois lados. */
 interface Zone { id: string; label: string; cx: number; cy: number; rx: number; ry: number; color: string; par?: boolean }
@@ -150,9 +157,7 @@ function Rosto() {
 
 export default function MapaFacial() {
   const { toast } = useToast()
-  const patientId = usePatientId()
-  const { id } = useParams()
-  const demo = DEMO_DATA && isSeedPatient(id ? decodeURIComponent(id) : '')
+  const { patientId, demo } = usePatient()
   const [units, setUnits] = useState<Record<string, number>>(demo ? DEMO_UNITS : ZERO_UNITS)
   const [sel, setSel] = useState('testa')
   const total = Object.values(units).reduce((a, b) => a + b, 0)
@@ -168,12 +173,48 @@ export default function MapaFacial() {
     return () => { cancelled = true }
   }, [patientId])
 
-  const salvar = () => {
+  const [salvando, setSalvando] = useState(false)
+  const salvar = async () => {
     if (supabase && patientId) {
+      setSalvando(true)
       const rows = ZONES.map((z) => ({ patient_id: patientId, zone: z.id, units: units[z.id] ?? 0 }))
-      supabase.from('facial_map').upsert(rows, { onConflict: 'patient_id,zone' }).then(({ error }) => { if (error) console.error('[supabase] facial_map', error.message) })
+      const { error } = await supabase.from('facial_map').upsert(rows, { onConflict: 'patient_id,zone' })
+      setSalvando(false)
+      if (error) return toast(`Não foi possível salvar o mapa: ${error.message}`, 'error')
     }
     toast('Mapa de aplicação salvo.')
+  }
+
+  /* ---------- aplicações com lote ---------- */
+  const { estoque } = useStore()
+  const { rows: aplicacoes, add: addAplicacao } = useCollection<Aplicacao>(
+    'aplicacoes',
+    esquema.v26 ? patientId : null,
+    (r) => ({ id: r.id as string, data: (r.aplicado_em as string) ?? '', produto: (r.produto as string) ?? '', lote: (r.lote as string) ?? '', validade: (r.validade as string) ?? '', zonas: (r.zonas as Record<string, number>) ?? {}, unidades: Number(r.unidades) || 0, obs: (r.observacoes as string) ?? '' }),
+    (a) => ({ aplicado_em: a.data, produto: a.produto, lote: a.lote, validade: a.validade || null, zonas: a.zonas, unidades: a.unidades, observacoes: a.obs || null }),
+    [],
+  )
+  const ordenadas = [...aplicacoes].sort((a, b) => b.data.localeCompare(a.data))
+  const [registrando, setRegistrando] = useState(false)
+  const [ap, setAp] = useState({ data: todayISO(), produto: '', lote: '', validade: '', obs: '' })
+  // produtos do estoque (toxina, preenchedores…) trazem lote e validade da última entrada
+  const produtos = estoque.filter((e) => /toxina|botul|dysport|xeomin|hialur|preench|bioestim|sculptra|radiesse|harmoniza/i.test(`${e.item} ${e.cat}`))
+  const escolherProduto = (nome: string) => {
+    const item = estoque.find((e) => e.item === nome)
+    setAp((f) => ({ ...f, produto: nome, lote: item?.lote || f.lote, validade: item?.validade || f.validade }))
+  }
+  const registrar = async () => {
+    if (!ap.produto.trim()) return toast('Informe o produto aplicado.', 'error')
+    if (!ap.lote.trim()) return toast('Informe o lote — ele identifica o produto em caso de reação ou recolhimento.', 'error')
+    if (ap.validade && ap.validade < ap.data) return toast('Produto vencido na data da aplicação. Confira a validade.', 'error')
+    if (total <= 0) return toast('Marque as unidades por região no mapa antes de registrar.', 'error')
+    if (supabase && !esquema.v26) return toast('O registro de aplicações com lote começa a funcionar depois da migração 0026.', 'error')
+    const zonas = Object.fromEntries(Object.entries(units).filter(([, u]) => u > 0))
+    const ok = await addAplicacao({ data: ap.data, produto: ap.produto.trim(), lote: ap.lote.trim(), validade: ap.validade, zonas, unidades: total, obs: ap.obs.trim() })
+    if (!ok) return
+    void salvar()
+    setRegistrando(false)
+    toast(`Aplicação registrada: ${total}U de ${ap.produto.trim()} (lote ${ap.lote.trim()}).`)
   }
 
   const zonaSel = ZONES.find((z) => z.id === sel)
@@ -238,10 +279,46 @@ export default function MapaFacial() {
           <section className="panel">
             <div className="kv-row"><span>Total de unidades</span><span>{total}U</span></div>
             <div className="kv-row"><span>Frascos estimados (50U)</span><span>{Math.ceil(total / 50) || 0}</span></div>
-            <Button size="sm" block style={{ marginTop: 10 }} onClick={salvar}>Salvar mapa</Button>
+            <Button size="sm" block style={{ marginTop: 10 }} loading={salvando} onClick={() => void salvar()}>Salvar mapa</Button>
+            <Button size="sm" variant="outline" block style={{ marginTop: 8 }} onClick={() => { setAp({ data: todayISO(), produto: '', lote: '', validade: '', obs: '' }); setRegistrando(true) }}>Registrar aplicação (lote)</Button>
+          </section>
+
+          <section className="panel" aria-labelledby="mf-aplicacoes">
+            <h2 id="mf-aplicacoes" className="panel-title sm">Aplicações registradas</h2>
+            {ordenadas.length === 0 ? (
+              <p className="empty-note">Nenhuma aplicação com lote registrada.</p>
+            ) : (
+              <div className="row-list" style={{ marginTop: 6 }}>
+                {ordenadas.map((a) => (
+                  <div key={a.id} style={{ display: 'block' }}>
+                    <div style={{ font: '500 13px var(--font)', color: 'var(--ink)' }}>{brDate(a.data)} · {a.produto} · {a.unidades}U</div>
+                    <div style={{ font: '400 12px var(--font)', color: 'var(--muted)' }}>
+                      Lote {a.lote}{a.validade ? ` · validade ${brDate(a.validade)}` : ''} · {Object.entries(a.zonas).map(([z, u]) => `${ZONES.find((x) => x.id === z)?.label ?? z} ${u}U`).join(', ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </aside>
       </div>
+
+      <Modal open={registrando} onClose={() => setRegistrando(false)} title="Registrar aplicação" subtitle={`${total}U marcadas no mapa`} width={460}
+        footer={<><Button variant="outline" onClick={() => setRegistrando(false)}>Cancelar</Button><Button onClick={() => void registrar()}>Registrar</Button></>}>
+        <Field label="Produto">
+          <SuggestInput value={ap.produto} options={produtos.map((e) => ({ value: e.item, sub: [e.marca, e.lote ? `lote ${e.lote}` : ''].filter(Boolean).join(' · ') || undefined }))}
+            placeholder="Ex.: Toxina botulínica 100U" emptyText="Fora do estoque — texto livre." onChange={(v) => setAp({ ...ap, produto: v })} onPick={escolherProduto} />
+        </Field>
+        <FieldRow>
+          <Field label="Lote"><TextInput value={ap.lote} onChange={(e) => setAp({ ...ap, lote: e.target.value.toUpperCase() })} placeholder="Ex.: C1234" /></Field>
+          <Field label="Validade"><DateField value={ap.validade} onChange={(iso) => setAp({ ...ap, validade: iso })} /></Field>
+        </FieldRow>
+        <Field label="Data da aplicação"><DateField value={ap.data} onChange={(iso) => setAp({ ...ap, data: iso })} /></Field>
+        <Field label="Observações (opcional)"><Textarea rows={2} value={ap.obs} onChange={(e) => setAp({ ...ap, obs: e.target.value })} placeholder="Diluição, intercorrências, retorno para retoque…" /></Field>
+        <div style={{ font: '400 12px var(--font)', color: 'var(--muted)' }}>
+          Regiões: {ZONES.filter((z) => units[z.id] > 0).map((z) => `${z.label} ${units[z.id]}U`).join(', ') || 'nenhuma marcada'}
+        </div>
+      </Modal>
     </div>
   )
 }
