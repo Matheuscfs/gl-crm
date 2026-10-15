@@ -57,8 +57,14 @@ Todas as telas existem e o typecheck passa limpo. O que falta é de três tipos:
       "SECURITY DEFINER executável" em funções que precisam ser chamadas: `horarios_livres` e
       `solicitar_agendamento` (agendamento online, sem login), `is_equipe`/`is_admin` (usadas pelo RLS em
       cada consulta) e `minha_situacao` (chamada no login). Tirar o acesso quebraria o app.
-- [ ] (Opcional, decisão sua — depende das contas na Meta e no Asaas) publicar as Edge Functions, cadastrar os segredos (Meta, Asaas,
-      `CRON_SECRET`) e rodar `supabase/automacao/agendar_cron.sql` — guia em `supabase/functions/README.md`.
+
+**Decisão adiada (15/10/2026): automação pelo WhatsApp oficial e cobrança Asaas.** O código está pronto
+(`supabase/functions/`, testado), mas ligar depende de contas que só o usuário pode criar — WhatsApp
+Business na Meta (com aprovação dos modelos de mensagem e custo por conversa) e Asaas — e de colar as
+chaves delas como segredos no Supabase. Até lá o app funciona com os botões de WhatsApp manuais, e a
+tela de Relacionamento já diz que o envio é manual. Para ligar: guia em `supabase/functions/README.md`
+(publicar as funções, cadastrar os segredos e `CRON_SECRET`, rodar `supabase/automacao/agendar_cron.sql`
+e ligar em Configurações → Automação).
 
 ---
 
