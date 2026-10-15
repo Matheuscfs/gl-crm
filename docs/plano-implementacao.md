@@ -27,6 +27,21 @@ Todas as telas existem e o typecheck passa limpo. O que falta é de três tipos:
   viewport e `prefers-reduced-motion` corretos.
 - Parcelamento/carnê do plano corrigido no commit 5a59ce0.
 
+## Infraestrutura (15/10/2026)
+
+- **Supabase:** projeto GL CRM `qkgmlmlzahcsmxqwhgjr` (fora da org Aura; o MCP não alcança).
+  Migrações 0001–0025 aplicadas pelo SQL Editor, sem `0002_seed` e `0008_seed_estetico`.
+  Conferido pela API: as 27 tabelas existem e o acesso anônimo é negado (RLS da 0025).
+- **GitHub:** `auralink-dev/gl-crm` (privado), remoto local `auralink`, com `main` e
+  `front/fundacao-responsiva`. O PR #1 continua em `Matheuscfs/gl-crm` (`origin`).
+- **Vercel:** projeto `gl-crm` no time auraconnect-dev, ligado a `auralink-dev/gl-crm`,
+  variáveis `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_DEMO_DATA=0`
+  (produção e preview). Produção em https://gl-crm-delta.vercel.app, publicada manualmente a
+  partir de `front/fundacao-responsiva`; pushes em `main` passam a publicar sozinhos.
+- [ ] Criar no Supabase Auth o usuário da Dra. (Authentication → Users → Add user).
+- [ ] Authentication → URL Configuration: Site URL `https://gl-crm-delta.vercel.app`.
+- [ ] Rodar o Security Advisor no painel do projeto novo.
+
 ---
 
 ## Fase 0 — Redesenho aprovado (linha visual Aura+)
@@ -169,7 +184,7 @@ Proposta aprovada em 14/10/2026 no canvas https://claude.ai/artifact/Ht1SoizN7wQ
 
 ## Fase 4 — Precisa de migração no banco
 
-O MCP não alcança o projeto `nidsrprnhbatktgqauwi`: cada item vira um arquivo `0026+` em
+O MCP não alcança o projeto `qkgmlmlzahcsmxqwhgjr`: cada item vira um arquivo `0026+` em
 `supabase/migrations/` para aplicar à mão no SQL Editor.
 
 - [ ] `installments.pago_em` — faturamento pela data de pagamento e recibo na data certa.
