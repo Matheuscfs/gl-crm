@@ -1,0 +1,106 @@
+---
+import Icon from './Icon.astro'
+import { SITE } from '../site'
+---
+<section class="sec" id="lista" aria-labelledby="lista-tit">
+  <div class="wrap">
+    <div class="lista" data-reveal>
+      <div class="lista-txt">
+        <span class="eyebrow"><Icon name="sparkle" size={16} /> Lista de espera</span>
+        <h2 class="h-sec" id="lista-tit">Seja um dos primeiros consultórios.</h2>
+        <p class="lead">Estamos abrindo aos poucos. Deixe seu contato e avisamos quando for a sua vez.</p>
+        <ul class="lista-pontos">
+          <li><Icon name="check" stroke={2.6} /> Você fica sabendo primeiro, antes da divulgação.</li>
+          <li><Icon name="check" stroke={2.6} /> Conta como é o seu consultório e a gente prioriza o que falta para você.</li>
+          <li><Icon name="check" stroke={2.6} /> Sem cartão e sem compromisso.</li>
+        </ul>
+      </div>
+
+      <form class="form" data-form novalidate>
+        <div class="form-campos" data-campos>
+          <label class="campo">
+            <span>Nome</span>
+            <input name="nome" autocomplete="name" required minlength="2" maxlength="120" placeholder="Como podemos te chamar?" />
+          </label>
+          <label class="campo">
+            <span>E-mail</span>
+            <input name="email" type="email" autocomplete="email" inputmode="email" required maxlength="200" placeholder="voce@consultorio.com.br" />
+          </label>
+          <label class="campo">
+            <span>WhatsApp <small>(opcional)</small></span>
+            <input name="whatsapp" type="tel" autocomplete="tel" inputmode="tel" maxlength="30" placeholder="(45) 99999-0000" />
+          </label>
+          <fieldset class="seg-campo">
+            <legend>Quantos dentistas atendem aí?</legend>
+            <div class="seg">
+              <label><input type="radio" name="tamanho" value="solo" checked /><span>Só eu</span></label>
+              <label><input type="radio" name="tamanho" value="2-4" /><span>2 a 4</span></label>
+              <label><input type="radio" name="tamanho" value="5+" /><span>5 ou mais</span></label>
+            </div>
+          </fieldset>
+          <label class="mel" aria-hidden="true">Não preencha<input name="site" tabindex="-1" autocomplete="off" /></label>
+          <button class="enviar" type="submit" data-enviar>Entrar na lista de espera <Icon name="arrow" size={18} /></button>
+          <p class="form-erro" data-erro role="alert"></p>
+          <p class="form-nota">Usamos seus dados só para falar sobre o {SITE.nome}. Nada de spam.</p>
+        </div>
+        <div class="form-ok" data-ok hidden tabindex="-1">
+          <span class="selo"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" pathLength="1" /></svg></span>
+          <h3 data-ok-tit>Pronto, você está na lista!</h3>
+          <p data-ok-txt>Assim que abrirmos a sua vaga, você recebe um e-mail.</p>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { entrarNaLista } from '../scripts/lista'
+
+  const form = document.querySelector<HTMLFormElement>('[data-form]')!
+  const campos = form.querySelector<HTMLElement>('[data-campos]')!
+  const ok = form.querySelector<HTMLElement>('[data-ok]')!
+  const erro = form.querySelector<HTMLElement>('[data-erro]')!
+  const botao = form.querySelector<HTMLButtonElement>('[data-enviar]')!
+  const aberto = Date.now()
+
+  const marcar = (nome: string, ruim: boolean) => form.elements.namedItem(nome) instanceof HTMLInputElement && (form.elements.namedItem(nome) as HTMLInputElement).setAttribute('aria-invalid', String(ruim))
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const d = new FormData(form)
+    const nome = String(d.get('nome') ?? '').trim()
+    const email = String(d.get('email') ?? '').trim()
+    const whatsapp = String(d.get('whatsapp') ?? '').trim()
+    const tamanho = String(d.get('tamanho') ?? 'solo')
+
+    const nomeRuim = nome.length < 2
+    const emailRuim = !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
+    marcar('nome', nomeRuim)
+    marcar('email', emailRuim)
+    if (nomeRuim || emailRuim) {
+      erro.textContent = nomeRuim ? 'Conta pra gente o seu nome.' : 'Confira o e-mail: parece que falta alguma coisa.'
+      ;(form.elements.namedItem(nomeRuim ? 'nome' : 'email') as HTMLInputElement).focus()
+      return
+    }
+    // robô: preencheu o campo escondido ou enviou rápido demais
+    if (String(d.get('site') ?? '') || Date.now() - aberto < 1500) return
+
+    erro.textContent = ''
+    botao.disabled = true
+    botao.firstChild!.textContent = 'Enviando… '
+    const r = await entrarNaLista({ nome, email, whatsapp, tamanho })
+    botao.disabled = false
+    botao.firstChild!.textContent = 'Entrar na lista de espera '
+    if (r === 'erro') {
+      erro.textContent = 'Não conseguimos registrar agora. Tente de novo em instantes.'
+      return
+    }
+    const primeiro = nome.split(/\s+/)[0]
+    form.querySelector('[data-ok-tit]')!.textContent = r === 'ja' ? `${primeiro}, você já estava na lista!` : `Pronto, ${primeiro}! Você está na lista.`
+    if (r === 'teste') form.querySelector('[data-ok-txt]')!.textContent = 'Modo de teste: a lista ainda não está ligada a um banco, então nada foi salvo.'
+    campos.hidden = true
+    ok.hidden = false
+    ok.focus()
+    window.dispatchEvent(new Event('lista-ok'))
+  })
+</script>

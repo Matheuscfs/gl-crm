@@ -1,0 +1,142 @@
+---
+/** Telas do app desenhadas em HTML (nítidas e nos dois temas). Pacientes e valores de exemplo. */
+import Icon from './Icon.astro'
+
+interface Props { n: number; on?: boolean }
+const { n, on = false } = Astro.props
+const cls = `tela${on ? ' on' : ''}`
+
+// odontograma da criança (dentição mista, arcada superior): decíduos com fundo rosado
+const odo: [string, string][] = [
+  ['16', 'sel'], ['55', 'dec'], ['54', 'dec'], ['53', 'dec'], ['12', ''], ['11', ''],
+  ['21', ''], ['22', ''], ['63', 'dec'], ['64', 'dec car'], ['65', 'dec'], ['26', 'sel'],
+]
+---
+{n === 0 && (
+  <div class={cls} data-tela="0" aria-hidden="true">
+    <div class="tela-tit"><h4>Bom dia, <span>Dra. Camila</span></h4><small>Quinta-feira</small></div>
+    <div class="cartao resumo-num">
+      <span class="anel" style="--p: 0.875"><b>7/8</b></span>
+      <p><strong>Confirmados pelo WhatsApp</strong>1 pediu para remarcar — a recepção já foi avisada.</p>
+    </div>
+    <div class="cartao">
+      <ul class="linhas">
+        <li class="linha"><time>08:00</time><div><b>Helena Duarte</b><span>Avaliação</span></div><span class="chip ok"><Icon name="check" size={12} stroke={3} /> Confirmado</span></li>
+        <li class="linha"><time>09:00</time><div><b>Pedro Almeida, 7</b><span>Selante</span></div><span class="chip ok"><Icon name="check" size={12} stroke={3} /> Confirmado</span></li>
+        <li class="linha"><time>10:20</time><div><b>Beatriz Lima</b><span>Limpeza</span></div><span class="chip amb">Remarcar</span></li>
+        <li class="linha"><time>11:00</time><div><b>Marina Costa</b><span>Orçamento</span></div><span class="chip ok"><Icon name="check" size={12} stroke={3} /> Confirmado</span></li>
+      </ul>
+    </div>
+  </div>
+)}
+
+{n === 1 && (
+  <div class={cls} data-tela="1" aria-hidden="true">
+    <div class="tela-tit"><h4>Pedro Almeida <span>· 7 anos</span></h4><small>Dentição mista</small></div>
+    <div class="cartao">
+      <div class="odo">{odo.map(([num, c]) => <i class={c}>{num}</i>)}</div>
+      <div class="odo-leg">
+        <span style="--c: var(--teal)">Selante</span>
+        <span style="--c: var(--red)">A tratar</span>
+        <span style="--c: rgba(239, 158, 196, 0.6)">Decíduo</span>
+      </div>
+    </div>
+    <div class="cartao evol">
+      <div class="chips"><span class="chip vio">Evolução · 09:12</span><span class="chip amb">Risco de cárie: moderado</span></div>
+      <p>Selante resinoso em 16 e 26. Lesão inicial em 64: aplicação de flúor e reavaliação em 3 meses. Orientação de escovação com a mãe.</p>
+      <small><Icon name="shield" size={14} /> Salvo · cada alteração fica no histórico</small>
+    </div>
+    <div class="cartao anexos">
+      <span class="chip">Anexos privados</span>
+      <div class="fotos"><i class="rx"></i><i class="rx"></i><i class="foto"></i></div>
+    </div>
+  </div>
+)}
+
+{n === 2 && (
+  <div class={cls} data-tela="2" aria-hidden="true">
+    <div class="tela-tit"><h4>Plano <span>· Marina Costa</span></h4><small>Orçamento nº 0318</small></div>
+    <div class="cartao">
+      <ul class="itens">
+        <li>Restauração em resina · 36<em>R$ 280,00</em></li>
+        <li>Restauração em resina · 46<em>R$ 280,00</em></li>
+        <li>Clareamento caseiro<em>R$ 900,00</em></li>
+      </ul>
+      <div class="total"><span>Total · 3x de R$ 486,67</span><strong>R$ 1.460,00</strong></div>
+    </div>
+    <div class="cartao">
+      <ul class="feitos">
+        <li><i><Icon name="send" /></i>Enviado pelo WhatsApp às 11:31</li>
+        <li><i><Icon name="check" /></i>Aprovado às 11:42 · 3 parcelas geradas</li>
+        <li><i><Icon name="bell" /></i>Lembrete automático antes de cada vencimento</li>
+      </ul>
+    </div>
+  </div>
+)}
+
+{n === 3 && (
+  <div class={cls} data-tela="3" aria-hidden="true">
+    <div class="tela-tit"><h4>Financeiro <span>· hoje</span></h4><small>Contas a receber</small></div>
+    <div class="cartao pix">
+      <span class="pix-ico"><Icon name="dollar" size={24} /></span>
+      <div><strong>R$ 480,00</strong><span>PIX de Caio Martins · baixa automática às 14:05</span></div>
+    </div>
+    <div class="cartao">
+      <ul class="feitos">
+        <li><i><Icon name="receipt" /></i>Recibo nº 0142 gerado</li>
+        <li><i><Icon name="doc" /></i>Lançamento do Receita Saúde pronto</li>
+        <li><i class="amb"><Icon name="bell" /></i>Boleto de Rafael vence sexta · lembrete enviado</li>
+      </ul>
+    </div>
+    <div class="cartao semana">
+      <div class="semana-tit"><span>Recebido na semana</span><b>R$ 6.820</b></div>
+      <div class="barras">{[42, 68, 55, 90, 30].map((h, i) => <span style={`--h: ${h}%`} class={i === 3 ? 'hoje' : ''}><i>{['seg', 'ter', 'qua', 'qui', 'sex'][i]}</i></span>)}</div>
+    </div>
+  </div>
+)}
+
+{n === 4 && (
+  <div class={cls} data-tela="4" aria-hidden="true">
+    <div class="tela-tit"><h4>Júlia Prado <span>· HOF</span></h4><small>Mapa facial</small></div>
+    <div class="cartao face">
+      <svg viewBox="0 0 120 150" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+        <path d="M60 8c-27 0-44 21-44 52 0 34 20 74 44 82 24-8 44-48 44-82 0-31-17-52-44-52z" />
+        <path d="M34 62c6-4 13-4 19 0M67 62c6-4 13-4 19 0" />
+        <path d="M60 70v22c-3 3-7 4-9 3M50 116c6 4 14 4 20 0" />
+        <circle class="ponto-anel" cx="60" cy="48" r="7" /><circle class="ponto" cx="60" cy="48" r="2.6" />
+        <circle class="ponto-anel" cx="50" cy="30" r="6" /><circle class="ponto" cx="50" cy="30" r="2.2" />
+        <circle class="ponto-anel" cx="70" cy="30" r="6" /><circle class="ponto" cx="70" cy="30" r="2.2" />
+        <circle class="ponto" cx="22" cy="66" r="2.2" /><circle class="ponto" cx="98" cy="66" r="2.2" />
+      </svg>
+      <div class="lote">
+        <span class="chip vio">Toxina botulínica · 24 U</span>
+        <dl>
+          <dt>Lote</dt><dd>B2231</dd>
+          <dt>Validade</dt><dd>03/2027</dd>
+          <dt>Pontos</dt><dd>Glabela, frontal, periorbicular</dd>
+          <dt>Retoque</dt><dd>lembrete em 15 dias</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="cartao">
+      <ul class="feitos">
+        <li><i><Icon name="box" /></i>1 frasco baixado do estoque, com o lote</li>
+        <li><i><Icon name="clipboard" /></i>Fotos de antes e depois na ficha</li>
+      </ul>
+    </div>
+  </div>
+)}
+
+{n === 5 && (
+  <div class={cls} data-tela="5" aria-hidden="true">
+    <div class="tela-tit"><h4>Quem chamar <span>amanhã</span></h4><small>4 lembretes</small></div>
+    <div class="cartao">
+      <ul class="chamar">
+        <li><span class="avatar">AR</span><div><b>Ana Ribeiro</b><span>Retorno de 6 meses venceu</span></div><span class="mini zap">Chamar</span></li>
+        <li><span class="avatar ambar">LM</span><div><b>Laura Mendes</b><span>Faz 6 anos amanhã</span></div><span class="mini zap">Parabéns</span></li>
+        <li><span class="avatar rosa">JP</span><div><b>Júlia Prado</b><span>Retoque de toxina em 15 dias</span></div><span class="mini">Agendar</span></li>
+        <li><span class="avatar verde"><Icon name="box" size={15} /></span><div><b>Resina A2</b><span>2 unidades · abaixo do mínimo</span></div><span class="mini">Repor</span></li>
+      </ul>
+    </div>
+  </div>
+)}

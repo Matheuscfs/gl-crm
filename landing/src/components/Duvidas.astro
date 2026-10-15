@@ -1,0 +1,31 @@
+---
+import Icon from './Icon.astro'
+import { SITE } from '../site'
+
+const duvidas = [
+  { p: 'Quando posso começar a usar?', r: 'Estamos abrindo aos poucos, para cada consultório começar bem. Quem está na lista recebe o convite por e-mail, antes da divulgação.' },
+  { p: 'Precisa instalar alguma coisa?', r: `Não. O ${SITE.nome} abre no navegador do computador, do tablet e do celular — e pode ser instalado na tela inicial como um app.` },
+  { p: 'O WhatsApp é o meu número pessoal?', r: 'Não. As mensagens saem pela API oficial do WhatsApp (Meta), no número da clínica, e não dependem de nenhum celular ligado na recepção.' },
+  { p: 'Serve para odontopediatria e harmonização?', r: 'Foi feito exatamente para isso: odontograma com dentição decídua e mista, prevenção, autorização de menor e mapa facial com produto, lote e validade.' },
+  { p: 'Quem consegue ver os dados dos pacientes?', r: 'Só os e-mails cadastrados na equipe. Radiografias e anexos ficam em arquivos privados, e o prontuário guarda o histórico de cada alteração.' },
+  { p: 'Emite nota fiscal?', r: 'Hoje gera recibos e deixa pronto o lançamento do Receita Saúde e do Carnê-Leão. A NFS-e está no planejamento.' },
+  { p: 'Quanto vai custar?', r: 'O preço sai junto com a abertura. Quem está na lista fica sabendo primeiro.' },
+]
+---
+<section class="sec" id="duvidas" aria-labelledby="duv-tit">
+  <div class="wrap faq">
+    <div class="sec-head">
+      <span class="eyebrow" data-reveal>Dúvidas</span>
+      <h2 class="h-sec" id="duv-tit" data-reveal style="--d: 0.06s">Perguntas <span class="t2">de quem atende.</span></h2>
+      <p class="lead" data-reveal style="--d: 0.12s">As que mais ouvimos de dentistas e recepcionistas.</p>
+    </div>
+    <div class="faq-lista">
+      {duvidas.map((d, i) => (
+        <details data-reveal style={`--d: ${i * 0.04}s`}>
+          <summary>{d.p}<Icon name="chevDown" size={20} /></summary>
+          <p>{d.r}</p>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>

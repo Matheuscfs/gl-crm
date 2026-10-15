@@ -1,0 +1,119 @@
+---
+import Icon from './Icon.astro'
+---
+<section class="sec" id="whatsapp" aria-labelledby="zap-tit">
+  <div class="wrap zap">
+    <div class="zap-txt">
+      <span class="eyebrow" data-reveal>Confirmação automática</span>
+      <h2 class="h-sec" id="zap-tit" data-reveal style="--d: 0.06s">Ninguém mais liga <span class="t2">para confirmar consulta.</span></h2>
+      <p class="lead" data-reveal style="--d: 0.12s">
+        24 horas antes, o paciente recebe a mensagem no WhatsApp da clínica. Respondeu <b>1</b>, a consulta
+        fica verde na agenda. Respondeu <b>2</b>, o pedido aparece para a recepção remarcar. Experimente.
+      </p>
+      <ul class="regua" data-reveal style="--d: 0.18s">
+        <li><span class="regua-ico"><Icon name="dollar" size={17} /></span><span>Cobrança antes, no dia e depois do vencimento<small>Lembretes com PIX copia e cola</small></span></li>
+        <li><span class="regua-ico"><Icon name="refresh" size={17} /></span><span>Retorno e retoque na hora certa<small>Revisão de 6 meses, retoque de toxina</small></span></li>
+        <li><span class="regua-ico"><Icon name="gift" size={17} /></span><span>Aniversário e pós-atendimento<small>O carinho que ninguém lembra de mandar</small></span></li>
+        <li><span class="regua-ico"><Icon name="box" size={17} /></span><span>Alerta de estoque<small>Material abaixo do mínimo ou perto da validade</small></span></li>
+      </ul>
+    </div>
+
+    <div class="zap-cena" data-reveal style="--d: 0.1s">
+      <div class="cel">
+        <div class="cel-tela">
+          <span class="cel-ilha" aria-hidden="true"></span>
+          <div class="chat-top">
+            <img src="/favicon.svg" alt="" width="34" height="34" />
+            <div><b>Seu consultório</b><span>Conta comercial</span></div>
+          </div>
+          <div class="chat" data-chat aria-live="polite" aria-label="Conversa de exemplo no WhatsApp">
+            <span class="chat-dia">Hoje</span>
+            <div class="bolha in">Olá, Ana! Lembrando a consulta do <b>Pedro</b> com a Dra. Camila amanhã, quinta, às <b>9h00</b>.<br />Responda <b>1</b> para confirmar ou <b>2</b> para remarcar.<time>09:00</time></div>
+          </div>
+          <div class="chat-resp">
+            <p data-resp-tit>Responda como a Ana, mãe do Pedro:</p>
+            <div class="chat-botoes" data-botoes>
+              <button type="button" data-resp="1"><b>1</b>Confirmar</button>
+              <button type="button" data-resp="2"><b>2</b>Remarcar</button>
+            </div>
+            <button type="button" class="chat-de-novo" data-de-novo hidden>↺ Recomeçar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ag-card" aria-label="Agenda de amanhã">
+        <div class="ag-head"><b>Agenda · quinta</b><span>Dra. · cadeira 1</span></div>
+        <ul class="ag-lista">
+          <li class="ag-row"><time>08:00</time><div><b>Helena Duarte</b><span class="st ok"><Icon name="check" size={12} stroke={3} /> Confirmado</span></div></li>
+          <li class="ag-row foco" data-foco><time>09:00</time><div><b>Pedro Almeida · selante</b><span class="st esp" data-st>Aguardando resposta</span></div></li>
+          <li class="ag-row"><time>10:20</time><div><b>Beatriz Lima</b><span class="st ok"><Icon name="check" size={12} stroke={3} /> Confirmado</span></div></li>
+        </ul>
+        <p class="ag-log" data-log>Lembrete enviado hoje às <b>9h00</b>, 24 h antes da consulta.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const chat = document.querySelector<HTMLElement>('[data-chat]')!
+  const botoes = document.querySelector<HTMLElement>('[data-botoes]')!
+  const tit = document.querySelector<HTMLElement>('[data-resp-tit]')!
+  const deNovo = document.querySelector<HTMLButtonElement>('[data-de-novo]')!
+  const foco = document.querySelector<HTMLElement>('[data-foco]')!
+  const st = document.querySelector<HTMLElement>('[data-st]')!
+  const log = document.querySelector<HTMLElement>('[data-log]')!
+  const inicial = { chat: chat.innerHTML, log: log.innerHTML }
+  let timers: number[] = []
+
+  const agora = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  const bolha = (cls: string, html: string) => {
+    const d = document.createElement('div')
+    d.className = `bolha ${cls}`
+    d.innerHTML = html
+    chat.appendChild(d)
+    return d
+  }
+  const check = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>'
+  const status = (cls: string, html: string) => {
+    st.className = `st ${cls} novo`
+    st.innerHTML = html
+    foco.classList.remove('mudou')
+    void foco.offsetWidth
+    foco.classList.add('mudou')
+  }
+
+  const responder = (r: '1' | '2') => {
+    botoes.hidden = true
+    tit.hidden = true
+    bolha('out', `${r}<time>${agora()}</time>`)
+    // o app não responde no chat: a resposta muda a agenda (é o que acontece de verdade)
+    timers.push(window.setTimeout(() => {
+      if (r === '1') {
+        status('ok', `${check} Confirmado pelo WhatsApp`)
+        log.innerHTML = `Ana respondeu <b>1</b> às ${agora()}. Ninguém precisou ligar.`
+      } else {
+        status('rem', 'Pediu para remarcar')
+        log.innerHTML = `Ana respondeu <b>2</b>. O pedido apareceu no app para a recepção ligar e remarcar.`
+      }
+      deNovo.hidden = false
+    }, 700))
+  }
+
+  botoes.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-resp]')
+    if (b) responder(b.dataset.resp as '1' | '2')
+  })
+  deNovo.addEventListener('click', () => {
+    timers.forEach(clearTimeout)
+    timers = []
+    chat.innerHTML = inicial.chat
+    log.innerHTML = inicial.log
+    st.className = 'st esp'
+    st.textContent = 'Aguardando resposta'
+    foco.classList.remove('mudou')
+    botoes.hidden = false
+    tit.hidden = false
+    deNovo.hidden = true
+    botoes.querySelector('button')?.focus()
+  })
+</script>
