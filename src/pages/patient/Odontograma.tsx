@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { Icon } from '../../icons'
 import { ToothBox, ToothCol, AnatomicalTooth } from '../../components/Tooth'
 import { Button } from '../../components/Button'
@@ -19,6 +19,10 @@ import {
 } from '../../data'
 
 const DENT_VIEWS = ['Decídua', 'Permanente', 'Mista']
+// 3D só carrega quando aberto: o Three.js não pesa no resto do app
+const Odonto3D = lazy(() => import('./Odonto3D'))
+const VIEW_KEY = 'gl-odonto-view'
+const lerVista = (): '3d' | '2d' => { try { return localStorage.getItem(VIEW_KEY) === '2d' ? '2d' : '3d' } catch { return '3d' } }
 // arcada base "limpa" (todos hígidos) — os estados reais vêm do banco por paciente
 const blankState = (list: ToothItem[]) => list.map((t) => ({ ...t, state: 'higido' as ToothState }))
 const BLANK_ARCHES = { upR: blankState(seedArches.upR), upL: blankState(seedArches.upL), loR: blankState(seedArches.loR), loL: blankState(seedArches.loL) }
@@ -55,6 +59,8 @@ export default function Odontograma({ initialDentition = 'Mista' }: { initialDen
   const [arches, setArches] = useState(BLANK_ARCHES)
   const [editOpen, setEditOpen] = useState(false)
   const [editState, setEditState] = useState<ToothState>('cariado')
+  const [vista, setVista] = useState<'3d' | '2d'>(lerVista)
+  const trocarVista = (v: '3d' | '2d') => { setVista(v); try { localStorage.setItem(VIEW_KEY, v) } catch { /* só nesta aba */ } }
 
   // Carrega os estados dos dentes gravados no banco e aplica sobre a arcada base.
   useEffect(() => {
@@ -105,188 +111,146 @@ export default function Odontograma({ initialDentition = 'Mista' }: { initialDen
     toast(`Dente ${selected} atualizado para ${TOOTH[state].label}.`)
   }
 
-  return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px', display: 'grid', gridTemplateColumns: '1fr 322px', gap: 20, alignContent: 'start' }}>
-      {/* Left column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 3, background: '#eef2f9', borderRadius: 11, padding: 3 }}>
-            {CONDITION_FILTERS.map((c) => (
-              <button
-                key={c.label}
-                onClick={() => setChip(c.label)}
-                className="chip"
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: 9,
-                  font: "700 12.5px 'Plus Jakarta Sans'",
-                  ...(c.label === chip ? { background: '#3f6bf5', color: '#fff' } : { background: 'transparent', color: '#5b647a' }),
-                }}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button className="icon-btn" title="Imprimir" onClick={() => window.print()}><Icon name="print" size={17} /></button>
-            <button className="icon-btn" title="Compartilhar" onClick={() => toast('Link do odontograma copiado.', 'info')}><Icon name="share" size={17} /></button>
-            <Menu items={[{ label: 'Exportar imagem', onClick: () => toast('Odontograma exportado.', 'info') }, { label: 'Limpar seleção', onClick: () => setChip('Todos') }]} />
-            <button className="btn btn-outline btn-sm" onClick={() => setChip((c) => (c === 'Todos' ? 'Cárie' : 'Todos'))}>
-              <Icon name="funnel" size={15} /> Filtrar
-            </button>
-          </div>
-        </div>
+  const upperOf = (num: number) => [1, 2, 5, 6].includes(Math.floor(num / 10))
 
-        {/* Odontograma card */}
-        <div className="card" style={{ padding: '22px 22px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-              <span style={{ font: "800 15px 'Plus Jakarta Sans'", color: '#1a2426' }}>Odontograma</span>
-              <span style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8a9699' }}>dentição {dentView.toLowerCase()}{patient?.age ? ` · ${patient.age}` : ''}</span>
-            </div>
-            <div style={{ display: 'flex', background: '#f2f4f4', borderRadius: 10, padding: 3 }}>
-              {DENT_VIEWS.map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setDentView(v)}
-                  style={{
-                    padding: '6px 13px',
-                    borderRadius: 7,
-                    border: 'none',
-                    font: "700 12px 'Plus Jakarta Sans'",
-                    cursor: 'pointer',
-                    ...(v === dentView ? { background: '#fff', color: '#2f52e0', boxShadow: '0 1px 2px rgba(15,40,45,.1)' } : { background: 'transparent', color: '#8a9699' }),
-                  }}
-                >
-                  {v}
-                </button>
+  return (
+    <div className="tab-body">
+      <div className="home-cols">
+        <div className="home-main">
+          <div className="tab-head" style={{ marginBottom: 0 }}>
+            <div className="seg-sm" role="group" aria-label="Filtrar por condição">
+              {CONDITION_FILTERS.map((c) => (
+                <button key={c.label} aria-pressed={c.label === chip} onClick={() => setChip(c.label)}>{c.label}</button>
               ))}
             </div>
+            <button className="btn-soft" onClick={() => window.print()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="print" size={15} /> Imprimir
+            </button>
           </div>
 
-          <div style={{ font: "700 11px 'Plus Jakarta Sans'", color: '#8b93a7', letterSpacing: '.04em', textAlign: 'center', marginBottom: 8 }}>MAXILA</div>
-          <div className="arch-gum">
-            {arches.upR.map((t) => (
-              <AnatomicalTooth key={t.num} tooth={t} upper selected={t.num === selected} dim={isDim(t)} onClick={setSelected} />
-            ))}
-            <span className="arch-gap" />
-            {arches.upL.map((t) => (
-              <AnatomicalTooth key={t.num} tooth={t} upper selected={t.num === selected} dim={isDim(t)} onClick={setSelected} />
-            ))}
-          </div>
-
-          <div style={{ height: 14 }} />
-
-          <div className="arch-gum lower">
-            {arches.loR.map((t) => (
-              <AnatomicalTooth key={t.num} tooth={t} upper={false} selected={t.num === selected} dim={isDim(t)} onClick={setSelected} />
-            ))}
-            <span className="arch-gap" />
-            {arches.loL.map((t) => (
-              <AnatomicalTooth key={t.num} tooth={t} upper={false} selected={t.num === selected} dim={isDim(t)} onClick={setSelected} />
-            ))}
-          </div>
-          <div style={{ font: "700 11px 'Plus Jakarta Sans'", color: '#8b93a7', letterSpacing: '.04em', textAlign: 'center', marginTop: 8 }}>MANDÍBULA</div>
-
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 20, paddingTop: 16, borderTop: '1px solid #f0f2f2' }}>
-            {LEGEND.map((s) => (
-              <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <ToothBox state={s} size="mini" />
-                <span style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#5b6a6d' }}>{TOOTH[s].label}</span>
+          <section className="panel" aria-labelledby="odonto-titulo">
+            <div className="panel-head" style={{ marginBottom: 14 }}>
+              <h2 id="odonto-titulo" className="panel-title">
+                Odontograma <span style={{ font: '400 12.5px var(--font)', color: 'var(--muted)' }}>dentição {dentView.toLowerCase()}{patient?.age ? ` · ${patient.age}` : ''}</span>
+              </h2>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <div className="seg-sm" role="group" aria-label="Dentição">
+                  {DENT_VIEWS.map((v) => <button key={v} aria-pressed={v === dentView} onClick={() => setDentView(v)}>{v}</button>)}
+                </div>
+                <div className="seg-sm" role="group" aria-label="Visualização">
+                  <button aria-pressed={vista === '3d'} onClick={() => trocarVista('3d')}>3D</button>
+                  <button aria-pressed={vista === '2d'} onClick={() => trocarVista('2d')}>2D</button>
+                </div>
               </div>
-            ))}
-          </div>
+            </div>
+
+            {vista === '3d' ? (
+              <Suspense fallback={<div className="o3d-stage skeleton" aria-busy="true" />}>
+                <Odonto3D upper={[...arches.upR, ...arches.upL]} lower={[...arches.loR, ...arches.loL]} selected={selected} onSelect={setSelected} isDim={isDim} />
+              </Suspense>
+            ) : (<>
+
+            <div style={{ font: '500 11px var(--font)', color: 'var(--muted)', letterSpacing: '.06em', textAlign: 'center', marginBottom: 8 }}>MAXILA</div>
+            <div className="arch-gum">
+              {arches.upR.map((t) => <AnatomicalTooth key={t.num} tooth={t} upper selected={t.num === selected} dim={isDim(t)} onClick={setSelected} />)}
+              <span className="arch-gap" />
+              {arches.upL.map((t) => <AnatomicalTooth key={t.num} tooth={t} upper selected={t.num === selected} dim={isDim(t)} onClick={setSelected} />)}
+            </div>
+            <div style={{ height: 12 }} />
+            <div className="arch-gum lower">
+              {arches.loR.map((t) => <AnatomicalTooth key={t.num} tooth={t} upper={false} selected={t.num === selected} dim={isDim(t)} onClick={setSelected} />)}
+              <span className="arch-gap" />
+              {arches.loL.map((t) => <AnatomicalTooth key={t.num} tooth={t} upper={false} selected={t.num === selected} dim={isDim(t)} onClick={setSelected} />)}
+            </div>
+            <div style={{ font: '500 11px var(--font)', color: 'var(--muted)', letterSpacing: '.06em', textAlign: 'center', marginTop: 8 }}>MANDÍBULA</div>
+            </>)}
+
+            <div className="legend-row">
+              {LEGEND.map((s) => <div key={s}><ToothBox state={s} size="mini" />{TOOTH[s].label}</div>)}
+            </div>
+          </section>
+
         </div>
 
-        {/* Deciduous reference */}
-        <div style={{ background: '#fafbff', border: '1px solid #eef1f1', borderRadius: 14, padding: '16px 18px' }}>
-          <div style={{ font: "700 12px 'Plus Jakarta Sans'", color: '#5b6a6d', marginBottom: 12 }}>
-            Dentição decídua completa — referência (51–85)
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {BLANK_DECIDUOUS.dUR.map((t) => <ToothCol key={t.num} tooth={t} numOnTop size="sm" />)}
+        <aside className="home-aside wrap-row" aria-label="Dente selecionado">
+          <section className="panel">
+            <div className="panel-head" style={{ marginBottom: 12 }}>
+              <h2 className="panel-title sm">Dente selecionado</h2>
+              <Menu items={[{ label: 'Editar condição', onClick: openEdit }, { label: 'Marcar como hígido', onClick: () => applyEdit('higido') }]} />
             </div>
-            <div style={{ width: 1.5, alignSelf: 'stretch', background: '#e2e5e5', margin: '0 10px' }} />
-            <div style={{ display: 'flex', gap: 4 }}>
-              {BLANK_DECIDUOUS.dUL.map((t) => <ToothCol key={t.num} tooth={t} numOnTop size="sm" />)}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+              <div className="tooth-thumb" style={{ width: 56, height: 64, background: TOOTH[selectedState].bg }}>
+                <AnatomicalTooth tooth={{ num: selected, state: selectedState }} upper={upperOf(selected)} width={30} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ font: '600 14px var(--font)', color: 'var(--ink)' }}>Dente {selected} · {TOOTH_GROUP(selected)}</div>
+                <div style={{ font: '400 12.5px var(--font)', color: 'var(--slate)', marginTop: 3 }}>
+                  Condição: <b style={{ fontWeight: 600, color: TOOTH[selectedState].fg }}>{TOOTH[selectedState].label}</b>
+                </div>
+                <div style={{ font: '400 12px var(--font)', color: 'var(--muted)' }}>{DENTITION(selected)} · {QUADRANT(selected)}</div>
+              </div>
             </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {BLANK_DECIDUOUS.dLR.map((t) => <ToothCol key={t.num} tooth={t} numOnTop={false} size="sm" />)}
-            </div>
-            <div style={{ width: 1.5, alignSelf: 'stretch', background: '#e2e5e5', margin: '0 10px' }} />
-            <div style={{ display: 'flex', gap: 4 }}>
-              {BLANK_DECIDUOUS.dLL.map((t) => <ToothCol key={t.num} tooth={t} numOnTop={false} size="sm" />)}
-            </div>
-          </div>
-        </div>
+            {detailRows.map((r) => <div key={r.k} className="kv-row"><span>{r.k}</span><span>{r.v}</span></div>)}
+            <button className="btn-cta" style={{ width: '100%', marginTop: 12 }} onClick={openEdit}>Editar condição do dente</button>
+          </section>
 
-        {/* Condition chart */}
-        <div className="card" style={{ padding: '18px 20px' }}>
-          <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#1a2426', marginBottom: 16 }}>Gráfico de condições</div>
+          <section className="panel">
+            <h2 className="panel-title sm">Dentes com alteração {recent.length > 0 && <span style={{ font: '400 12.5px var(--font)', color: 'var(--muted)' }}>{recent.length}</span>}</h2>
+            {recent.length === 0 ? (
+              <p className="empty-note">Nenhuma alteração — todos os dentes hígidos.</p>
+            ) : (
+              <div className="row-list" style={{ marginTop: 6 }}>
+                {recent.map((t) => (
+                  <div key={t.num}>
+                    <button className="tooth-thumb" onClick={() => setSelected(t.num)} aria-label={`Selecionar dente ${t.num}`} style={{ width: 40, height: 48, border: 'none', cursor: 'pointer', background: TOOTH[t.state].bg }}>
+                      <AnatomicalTooth tooth={t} upper={upperOf(t.num)} width={24} />
+                    </button>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ font: '500 13px var(--font)', color: 'var(--ink)' }}>Dente {t.num} · {TOOTH[t.state].label}</div>
+                      <div style={{ font: '400 12px var(--font)', color: 'var(--muted)' }}>{DENTITION(t.num)} · {TOOTH_GROUP(t.num)}</div>
+                    </div>
+                    <Menu items={[{ label: 'Ver / editar', onClick: () => { setSelected(t.num); setEditState(t.state); setEditOpen(true) } }]} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </aside>
+      </div>
+
+      {/* referências abaixo: no tablet em pé o dente selecionado fica logo depois da arcada */}
+      <div className="home-cols" style={{ marginTop: 18, alignItems: 'stretch' }}>
+        {/* referência da dentição decídua */}
+        <section className="deciduous-ref" aria-label="Dentição decídua completa" style={{ flex: '1 1 380px', minWidth: 0 }}>
+          <div style={{ font: '500 12px var(--font)', color: 'var(--slate)', marginBottom: 12 }}>Dentição decídua completa — referência (51–85)</div>
+          <div className="row">
+            <div style={{ display: 'flex', gap: 4 }}>{BLANK_DECIDUOUS.dUR.map((t) => <ToothCol key={t.num} tooth={t} numOnTop size="sm" />)}</div>
+            <div style={{ width: 1.5, alignSelf: 'stretch', background: 'var(--line)', margin: '0 10px' }} />
+            <div style={{ display: 'flex', gap: 4 }}>{BLANK_DECIDUOUS.dUL.map((t) => <ToothCol key={t.num} tooth={t} numOnTop size="sm" />)}</div>
+          </div>
+          <div className="row">
+            <div style={{ display: 'flex', gap: 4 }}>{BLANK_DECIDUOUS.dLR.map((t) => <ToothCol key={t.num} tooth={t} numOnTop={false} size="sm" />)}</div>
+            <div style={{ width: 1.5, alignSelf: 'stretch', background: 'var(--line)', margin: '0 10px' }} />
+            <div style={{ display: 'flex', gap: 4 }}>{BLANK_DECIDUOUS.dLL.map((t) => <ToothCol key={t.num} tooth={t} numOnTop={false} size="sm" />)}</div>
+          </div>
+        </section>
+
+        <section className="panel" aria-labelledby="cond-titulo" style={{ flex: '1 1 300px', minWidth: 0 }}>
+          <h2 id="cond-titulo" className="panel-title sm">Condições registradas</h2>
           {chart.length === 0 ? (
-            <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Sem condições registradas neste paciente.</div>
+            <p className="empty-note">Sem condições registradas neste paciente.</p>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 18, height: 118 }}>
+            <div className="cond-bars" role="img" aria-label={chart.map((c) => `${c.label} ${c.pct}%`).join(', ')}>
               {chart.map((c) => (
-                <div key={c.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 8, height: '100%' }}>
-                  <span style={{ font: "800 11px 'Plus Jakarta Sans'", color: '#1a2426' }}>{c.pct}%</span>
-                  <div style={{ width: '100%', height: c.pct * 3 + 10, borderRadius: '7px 7px 0 0', background: c.color }} />
-                  <span style={{ font: "600 10.5px 'Plus Jakarta Sans'", color: '#8a9699', textAlign: 'center' }}>{c.label}</span>
+                <div key={c.label}>
+                  <b>{c.pct}%</b>
+                  <i style={{ height: c.pct * 3 + 10, background: c.color }} />
+                  <span>{c.label}</span>
                 </div>
               ))}
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Right column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div className="card" style={{ padding: '16px 18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <span style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#1a2426' }}>Selecionado</span>
-            <Menu items={[{ label: 'Editar condição', onClick: openEdit }, { label: 'Marcar como hígido', onClick: () => applyEdit('higido') }]} />
-          </div>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-            <div style={{ width: 56, height: 64, borderRadius: 12, flex: 'none', background: TOOTH[selectedState].bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <AnatomicalTooth tooth={{ num: selected, state: selectedState }} upper={[1, 2, 5, 6].includes(Math.floor(selected / 10))} width={30} />
-            </div>
-            <div>
-              <div style={{ font: "800 13.5px 'Plus Jakarta Sans'", color: '#2f52e0' }}>Dente {selected} · {TOOTH_GROUP(selected)}</div>
-              <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#5b6a6d', marginTop: 3 }}>
-                Condição: <b style={{ color: TOOTH[selectedState].fg }}>{TOOTH[selectedState].label}</b>
-              </div>
-              <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8a9699' }}>{DENTITION(selected)} · {QUADRANT(selected)}</div>
-            </div>
-          </div>
-          {detailRows.map((r) => (
-            <div key={r.k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 0', borderBottom: '1px solid #f4f6f6' }}>
-              <span style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8a9699' }}>{r.k}</span>
-              <span style={{ font: "700 12px 'Plus Jakarta Sans'", color: '#1a2426', textAlign: 'right' }}>{r.v}</span>
-            </div>
-          ))}
-          <Button variant="teal-soft" size="sm" block onClick={openEdit} style={{ marginTop: 12 }}>
-            Editar condição do dente
-          </Button>
-        </div>
-
-        <div style={{ font: "800 13px 'Plus Jakarta Sans'", color: '#26324a', margin: '2px 2px 0' }}>Condições registradas {recent.length > 0 && `(${recent.length})`}</div>
-        {recent.length === 0 && <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7', padding: '4px 2px' }}>Nenhuma alteração — todos os dentes hígidos.</div>}
-        {recent.map((t) => (
-          <div key={t.num} className="card card-hover" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 40, height: 48, borderRadius: 10, flex: 'none', background: TOOTH[t.state].bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <AnatomicalTooth tooth={t} upper={[1, 2, 5, 6].includes(Math.floor(t.num / 10))} width={24} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ font: "800 13px 'Plus Jakarta Sans'", color: '#1a2426' }}>Dente {t.num}</div>
-              <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#5b6a6d', marginTop: 2 }}>Condição: {TOOTH[t.state].label}</div>
-              <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8a9699' }}>{DENTITION(t.num)} · {TOOTH_GROUP(t.num)}</div>
-            </div>
-            <Menu items={[{ label: 'Ver / editar', onClick: () => { setSelected(t.num); setEditState(t.state); setEditOpen(true) } }]} />
-          </div>
-        ))}
+        </section>
       </div>
 
       <Modal
@@ -303,7 +267,7 @@ export default function Odontograma({ initialDentition = 'Mista' }: { initialDen
         }
       >
         <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0 6px' }}>
-          <AnatomicalTooth tooth={{ num: selected, state: editState }} upper={[1, 2, 5, 6].includes(Math.floor(selected / 10))} width={38} />
+          <AnatomicalTooth tooth={{ num: selected, state: editState }} upper={upperOf(selected)} width={38} />
         </div>
         <Field label="Condição">
           <Select value={editState} onChange={(e) => setEditState(e.target.value as ToothState)}>

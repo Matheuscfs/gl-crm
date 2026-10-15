@@ -1,5 +1,6 @@
 /* Mock data layer mirroring the design prototype (CRM Odontopediátrico.dc.html). */
 import { INVENTARIO, INVENTARIO_DATA } from './inventario'
+import { parseISO, addDays, todayISO, brDate } from './lib/dates'
 
 export type ApptStatus =
   | 'agendado'
@@ -13,19 +14,19 @@ export const STATUS: Record<
   ApptStatus,
   { label: string; dot: string; bg: string; fg: string; border: string }
 > = {
-  agendado: { label: 'Agendado', dot: '#64748b', bg: '#eef1f4', fg: '#3f4b57', border: '#d7dde3' },
-  confirmado: { label: 'Confirmado', dot: '#3f6bf5', bg: '#e9eeff', fg: '#2f52e0', border: '#cdd8ff' },
-  em_atendimento: { label: 'Em atendimento', dot: '#d97706', bg: '#fdf1e2', fg: '#9a5a06', border: '#f1dbb6' },
-  concluido: { label: 'Concluído', dot: '#16a34a', bg: '#e7f5ec', fg: '#127436', border: '#c4e6cf' },
-  faltou: { label: 'Faltou', dot: '#dc2626', bg: '#fbeaea', fg: '#a81e1e', border: '#f1cccc' },
-  desmarcado: { label: 'Desmarcado', dot: '#94a3b8', bg: '#f0f2f4', fg: '#7d8a97', border: '#e0e5e9' },
+  agendado: { label: 'Agendado', dot: '#64748b', bg: 'var(--chip-bg)', fg: 'var(--slate)', border: '#d7dde3' },
+  confirmado: { label: 'Confirmado', dot: 'var(--primary)', bg: 'var(--primary-bg)', fg: 'var(--primary-dark)', border: 'var(--primary-border)' },
+  em_atendimento: { label: 'Em atendimento', dot: '#d97706', bg: 'var(--amber-bg)', fg: 'var(--amber-dark)', border: '#f1dbb6' },
+  concluido: { label: 'Concluído', dot: '#16a34a', bg: 'var(--green-bg)', fg: 'var(--green-dark)', border: '#c4e6cf' },
+  faltou: { label: 'Faltou', dot: '#dc2626', bg: 'var(--red-bg)', fg: 'var(--danger-text)', border: 'var(--red-border)' },
+  desmarcado: { label: 'Desmarcado', dot: '#94a3b8', bg: 'var(--chip-bg)', fg: '#7d8a97', border: '#e0e5e9' },
 }
 
 export const dashboardCards = [
-  { label: 'Atendimentos hoje', value: '12', sub: '3 em sala de espera', tone: '#3f6bf5' },
+  { label: 'Atendimentos hoje', value: '12', sub: '3 em sala de espera', tone: 'var(--primary)' },
   { label: 'Confirmações pendentes', value: '05', sub: 'para amanhã', tone: '#d97706' },
   { label: 'Faltas do mês', value: '04', sub: '2 a menos que junho', tone: '#16a34a' },
-  { label: 'Faturamento do mês', value: 'R$ 38.420', sub: '12% acima da meta', tone: '#3f6bf5' },
+  { label: 'Faturamento do mês', value: 'R$ 38.420', sub: '12% acima da meta', tone: 'var(--primary)' },
 ]
 
 export interface Appt {
@@ -114,18 +115,18 @@ export const fmtHour = (h: number) =>
 export type TreatStatus = 'tratamento' | 'manutencao' | 'concluido' | 'lead' | 'primeira'
 
 export const TREAT_STATUS: Record<TreatStatus, { label: string; bg: string; fg: string }> = {
-  tratamento: { label: 'Em tratamento', bg: '#e9eeff', fg: '#2f52e0' },
-  manutencao: { label: 'Manutenção', bg: '#eef1f4', fg: '#3f4b57' },
-  concluido: { label: 'Concluído', bg: '#e7f5ec', fg: '#127436' },
-  lead: { label: 'Novo lead', bg: '#fdf1e2', fg: '#9a5a06' },
-  primeira: { label: '1ª consulta', bg: '#eef4fb', fg: '#1d4ed8' },
+  tratamento: { label: 'Em tratamento', bg: 'var(--primary-bg)', fg: 'var(--primary-dark)' },
+  manutencao: { label: 'Manutenção', bg: 'var(--chip-bg)', fg: 'var(--slate)' },
+  concluido: { label: 'Concluído', bg: 'var(--green-bg)', fg: 'var(--green-dark)' },
+  lead: { label: 'Novo lead', bg: 'var(--amber-bg)', fg: 'var(--amber-dark)' },
+  primeira: { label: '1ª consulta', bg: 'var(--chip-bg)', fg: '#1d4ed8' },
 }
 
 export type Perfil = 'pediatrico' | 'estetico' | 'adulto'
 
 export const PERFIL: Record<Perfil, { label: string; short: string; bg: string; fg: string }> = {
-  pediatrico: { label: 'Pediátrico', short: 'Ped.', bg: '#e9eeff', fg: '#2f52e0' },
-  estetico: { label: 'Estético', short: 'Est.', bg: '#fdeaf3', fg: '#c2478a' },
+  pediatrico: { label: 'Pediátrico', short: 'Ped.', bg: 'var(--primary-bg)', fg: 'var(--primary-dark)' },
+  estetico: { label: 'Estético', short: 'Est.', bg: 'var(--brand-pink-bg)', fg: 'var(--brand-pink)' },
   adulto: { label: 'Adulto', short: 'Adt.', bg: '#e6f6f1', fg: '#0f766e' },
 }
 
@@ -191,7 +192,8 @@ export const FIN_CATEGORIAS: Record<'receita' | 'despesa', { cat: string; subs: 
 /** Rótulo de idade (anos e meses) a partir de uma data ISO (YYYY-MM-DD). */
 export function idadeLabel(birthISO?: string): string {
   if (!birthISO) return ''
-  const b = new Date(birthISO)
+  // parseISO lê a data no fuso local: new Date('aaaa-mm-dd') seria meia-noite UTC, o dia anterior no Brasil
+  const b = parseISO(birthISO)
   if (Number.isNaN(b.getTime())) return ''
   const now = new Date()
   let months = (now.getFullYear() - b.getFullYear()) * 12 + (now.getMonth() - b.getMonth())
@@ -277,17 +279,18 @@ export const quickStats: { k: string; v: string; hl?: boolean }[] = [
 
 export type ToothState = 'higido' | 'cariado' | 'restaurado' | 'selante' | 'ausente' | 'erupcao' | 'extraido'
 
+/** Cores do odontograma pela convenção clínica: vermelho = a tratar (cárie), azul = já tratado (restauração, extração feita). */
 export const TOOTH: Record<
   ToothState,
   { label: string; fill: string; stroke: string; marker: string; bg: string; border: string; fg: string; glyph: string; dashed: boolean }
 > = {
-  higido:     { label: 'Hígido',      fill: '#ffffff', stroke: '#cdd6e6', marker: '#c9d2e2', bg: '#fff',     border: '#cdd6e6', fg: '#5b647a', glyph: '',  dashed: false },
-  cariado:    { label: 'Cárie',       fill: '#dcf1e4', stroke: '#4fb477', marker: '#4fb477', bg: '#e7f6ee', border: '#4fb477', fg: '#2f9a5b', glyph: '',  dashed: false },
-  restaurado: { label: 'Restaurado',  fill: '#ebe2fa', stroke: '#a98cdd', marker: '#a98cdd', bg: '#f0eafb', border: '#a98cdd', fg: '#7c5bc4', glyph: '',  dashed: false },
+  higido:     { label: 'Hígido',      fill: '#ffffff', stroke: 'var(--border-strong)', marker: '#c9d2e2', bg: '#fff',     border: 'var(--border-strong)', fg: 'var(--slate)', glyph: '',  dashed: false },
+  cariado:    { label: 'Cárie',       fill: 'rgba(217, 58, 63, 0.14)', stroke: '#d93a3f', marker: '#d93a3f', bg: 'var(--red-bg)', border: '#d93a3f', fg: 'var(--danger-text)', glyph: '',  dashed: false },
+  restaurado: { label: 'Restaurado',  fill: 'rgba(59, 130, 246, 0.14)', stroke: '#3b82f6', marker: '#3b82f6', bg: 'var(--blue-bg)', border: '#3b82f6', fg: 'var(--blue-text)', glyph: '',  dashed: false },
   selante:    { label: 'Selante',     fill: '#d8f4f1', stroke: '#3fc7bf', marker: '#3fc7bf', bg: '#e3f7f5', border: '#3fc7bf', fg: '#1f938c', glyph: '•', dashed: false },
-  ausente:    { label: 'Ausente',     fill: '#f0f2f7', stroke: '#cdd6e6', marker: '#aeb7c8', bg: '#f0f2f7', border: '#cdd6e6', fg: '#aeb7c8', glyph: '–', dashed: true  },
-  erupcao:    { label: 'Em erupção',  fill: '#fbe1ee', stroke: '#ef9ec4', marker: '#ef9ec4', bg: '#fdeaf3', border: '#ef9ec4', fg: '#d16aa0', glyph: '↑', dashed: true  },
-  extraido:   { label: 'Extraído',    fill: '#fde2e0', stroke: '#ef6f68', marker: '#ef6f68', bg: '#fdeceb', border: '#ef6f68', fg: '#d64b45', glyph: '✕', dashed: false },
+  ausente:    { label: 'Ausente',     fill: 'var(--chip-bg)', stroke: 'var(--border-strong)', marker: 'var(--muted)', bg: 'var(--chip-bg)', border: 'var(--border-strong)', fg: 'var(--muted)', glyph: '–', dashed: true  },
+  erupcao:    { label: 'Em erupção',  fill: 'var(--brand-pink-bg)', stroke: '#ef9ec4', marker: '#ef9ec4', bg: 'var(--brand-pink-bg)', border: '#ef9ec4', fg: '#d16aa0', glyph: '↑', dashed: true  },
+  extraido:   { label: 'Extraído',    fill: 'var(--blue-bg)', stroke: '#3b82f6', marker: '#3b82f6', bg: 'var(--blue-bg)', border: '#3b82f6', fg: 'var(--blue-text)', glyph: '✕', dashed: false },
 }
 
 export interface ToothItem {
@@ -340,12 +343,12 @@ export const recentToothItems = [
 ]
 
 export const condChart = [
-  { label: 'Cárie', pct: 12, color: '#4fb477' },
+  { label: 'Cárie', pct: 12, color: '#d93a3f' },
   { label: 'Selante', pct: 10, color: '#3fc7bf' },
   { label: 'Em erupção', pct: 7, color: '#ef9ec4' },
-  { label: 'Restauração', pct: 4, color: '#a98cdd' },
-  { label: 'Ausente', pct: 3, color: '#aeb7c8' },
-  { label: 'Extraído', pct: 3, color: '#ef6f68' },
+  { label: 'Restauração', pct: 4, color: '#3b82f6' },
+  { label: 'Ausente', pct: 3, color: 'var(--muted)' },
+  { label: 'Extraído', pct: 3, color: '#93c5fd' },
 ]
 
 /* ---------- Anamnese ---------- */
@@ -389,10 +392,10 @@ export const alimentar = [
 /* ---------- Histórico ---------- */
 
 export const FRANKL: Record<number, { label: string; bg: string; fg: string }> = {
-  1: { label: '1 · Negativo', bg: '#fbeaea', fg: '#a81e1e' },
-  2: { label: '2 · Reticente', bg: '#fdf1e2', fg: '#9a5a06' },
-  3: { label: '3 · Positivo', bg: '#e7f5ec', fg: '#127436' },
-  4: { label: '4 · Muito positivo', bg: '#e9eeff', fg: '#2f52e0' },
+  1: { label: '1 · Negativo', bg: 'var(--red-bg)', fg: 'var(--danger-text)' },
+  2: { label: '2 · Reticente', bg: 'var(--amber-bg)', fg: 'var(--amber-dark)' },
+  3: { label: '3 · Positivo', bg: 'var(--green-bg)', fg: 'var(--green-dark)' },
+  4: { label: '4 · Muito positivo', bg: 'var(--primary-bg)', fg: 'var(--primary-dark)' },
 }
 
 export const historico = [
@@ -424,18 +427,28 @@ export const planoEstetico = [
 
 export type ParcelaStatus = 'pago' | 'aberto' | 'vencida'
 export const PARCELA_STATUS: Record<ParcelaStatus, { label: string; bg: string; fg: string }> = {
-  pago: { label: 'Pago', bg: '#e7f5ec', fg: '#127436' },
-  aberto: { label: 'Em aberto', bg: '#eef1f4', fg: '#3f4b57' },
-  vencida: { label: 'Vencida', bg: '#fbeaea', fg: '#a81e1e' },
+  pago: { label: 'Pago', bg: 'var(--green-bg)', fg: 'var(--green-dark)' },
+  aberto: { label: 'Em aberto', bg: 'var(--chip-bg)', fg: 'var(--slate)' },
+  vencida: { label: 'Vencida', bg: 'var(--red-bg)', fg: 'var(--danger-text)' },
 }
 
+/** Vencimento a `dias` de hoje — a demonstração não envelhece com o calendário. */
+const vencEm = (dias: number) => brDate(addDays(todayISO(), dias))
+
 export const parcelas: { resp: string; ref: string; venc: string; val: string; status: ParcelaStatus }[] = [
-  { resp: 'Ana Paula Martins', ref: 'Sofia · Plano #218 (1/3)', venc: '05/07/2026', val: 'R$ 200,00', status: 'pago' },
-  { resp: 'Rafael Correia', ref: 'Bento · Restauração', venc: '10/07/2026', val: 'R$ 180,00', status: 'aberto' },
-  { resp: 'Sandra Moreira', ref: 'Davi · Plano #201 (2/4)', venc: '28/06/2026', val: 'R$ 150,00', status: 'vencida' },
-  { resp: 'Juliana Ferreira', ref: 'Alice · Manutenção', venc: '14/07/2026', val: 'R$ 120,00', status: 'aberto' },
-  { resp: 'Diego Ramos', ref: 'Théo · Selante', venc: '03/07/2026', val: 'R$ 180,00', status: 'pago' },
-  { resp: 'Marcos Pires', ref: 'Isabela · Plano #199 (4/4)', venc: '20/06/2026', val: 'R$ 300,00', status: 'vencida' },
+  { resp: 'Ana Paula Martins', ref: 'Sofia · Plano #218 (1/3)', venc: vencEm(-6), val: 'R$ 200,00', status: 'pago' },
+  { resp: 'Rafael Correia', ref: 'Bento · Restauração', venc: vencEm(4), val: 'R$ 180,00', status: 'aberto' },
+  { resp: 'Sandra Moreira', ref: 'Davi · Plano #201 (2/4)', venc: vencEm(-16), val: 'R$ 150,00', status: 'aberto' },
+  { resp: 'Juliana Ferreira', ref: 'Alice · Manutenção', venc: vencEm(12), val: 'R$ 120,00', status: 'aberto' },
+  { resp: 'Diego Ramos', ref: 'Théo · Selante', venc: vencEm(-9), val: 'R$ 180,00', status: 'pago' },
+  { resp: 'Marcos Pires', ref: 'Isabela · Plano #199 (4/4)', venc: vencEm(-24), val: 'R$ 300,00', status: 'aberto' },
+  { resp: 'Ana Paula Martins', ref: 'Sofia · Plano #218 (2/3)', venc: vencEm(24), val: 'R$ 200,00', status: 'aberto' },
+  { resp: 'Sandra Moreira', ref: 'Davi · Plano #201 (1/4)', venc: vencEm(-46), val: 'R$ 150,00', status: 'pago' },
+  { resp: 'Marcos Pires', ref: 'Isabela · Plano #199 (3/4)', venc: vencEm(-54), val: 'R$ 300,00', status: 'pago' },
+  { resp: 'Camila Nogueira', ref: 'Toxina botulínica', venc: vencEm(-78), val: 'R$ 1.200,00', status: 'pago' },
+  { resp: 'Marcos Pires', ref: 'Isabela · Plano #199 (2/4)', venc: vencEm(-85), val: 'R$ 300,00', status: 'pago' },
+  { resp: 'Rodrigo Alves', ref: 'Preenchimento labial', venc: vencEm(-112), val: 'R$ 1.500,00', status: 'pago' },
+  { resp: 'Marcos Pires', ref: 'Isabela · Plano #199 (1/4)', venc: vencEm(-116), val: 'R$ 300,00', status: 'pago' },
 ]
 
 export const chartBars = [
@@ -449,10 +462,10 @@ export const chartBars = [
 ]
 
 export const pagamentos = [
-  { label: 'Pix', pct: 46, color: '#3f6bf5' },
+  { label: 'Pix', pct: 46, color: 'var(--primary)' },
   { label: 'Cartão de crédito', pct: 34, color: '#6d8bff' },
   { label: 'Dinheiro', pct: 12, color: '#a9c0ff' },
-  { label: 'Boleto', pct: 8, color: '#cdd8ff' },
+  { label: 'Boleto', pct: 8, color: 'var(--primary-border)' },
 ]
 
 /* ---------- CRM ---------- */
@@ -519,9 +532,9 @@ export const horarios = [
 
 export type EstoqueStatus = 'ok' | 'baixo' | 'critico'
 export const ESTOQUE_STATUS: Record<EstoqueStatus, { label: string; bg: string; fg: string; qty: string }> = {
-  ok: { label: 'Em dia', bg: '#e7f5ec', fg: '#127436', qty: '#1a2426' },
-  baixo: { label: 'Abaixo do mínimo', bg: '#fdf1e2', fg: '#9a5a06', qty: '#9a5a06' },
-  critico: { label: 'Crítico', bg: '#fbeaea', fg: '#a81e1e', qty: '#a81e1e' },
+  ok: { label: 'Em dia', bg: 'var(--green-bg)', fg: 'var(--green-dark)', qty: 'var(--ink)' },
+  baixo: { label: 'Abaixo do mínimo', bg: 'var(--amber-bg)', fg: 'var(--amber-dark)', qty: 'var(--amber-dark)' },
+  critico: { label: 'Crítico', bg: 'var(--red-bg)', fg: 'var(--danger-text)', qty: 'var(--danger-text)' },
 }
 
 /** `q < min` → repor; metade (ou menos) do mínimo → crítico. Mínimo 0 = não definido. */

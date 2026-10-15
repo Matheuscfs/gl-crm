@@ -105,53 +105,51 @@ export default function Documentos() {
   }
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px' }}>
+    <div className="tab-body">
       {/* Documentos para impressão */}
-      <div className="card" style={{ padding: '18px 20px', marginBottom: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <div style={{ font: "800 15px 'Plus Jakarta Sans'", color: '#26324a' }}>Documentos para impressão</div>
-          <Button size="sm" icon={<Icon name="print" size={16} />} onClick={openPacote}>Pacote de admissão</Button>
+      <section className="panel" aria-labelledby="impr-titulo" style={{ marginBottom: 16 }}>
+        <div className="panel-head">
+          <h2 id="impr-titulo" className="panel-title">Documentos para impressão</h2>
+          <button className="btn-cta sm" onClick={openPacote}><Icon name="print" size={15} /> Pacote de admissão</button>
         </div>
-        <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7', marginBottom: 12 }}>
+        <p className="panel-sub" style={{ margin: '4px 0 12px' }}>
           Perfil {PERFIL[perfil].label} · gere preenchido (dados da ficha) ou em branco para preencher à mão.
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+        </p>
+        <div className="auto-grid" style={{ '--min': '300px' } as React.CSSProperties}>
           {applicable.map((d) => (
-            <div key={d.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '11px 13px', border: '1px solid #eceff6', borderRadius: 11 }}>
-              <span style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a', minWidth: 0 }}>{d.title}</span>
+            <div key={d.key} className="doc-line">
+              <span>{d.title}</span>
               <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
-                <button className="chip" onClick={() => openDoc(d.key, d.title, d.node, false)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #cdd8ff', background: '#e9eeff', color: '#2f52e0', font: "700 11px 'Plus Jakarta Sans'" }}>Preenchido</button>
-                <button className="chip" onClick={() => openDoc(d.key, d.title, d.node, true)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #d7ddea', background: '#fff', color: '#5b647a', font: "700 11px 'Plus Jakarta Sans'" }}>Em branco</button>
+                <button className="chip-opt primary" onClick={() => openDoc(d.key, d.title, d.node, false)}>Preenchido</button>
+                <button className="chip-opt" onClick={() => openDoc(d.key, d.title, d.node, true)}>Em branco</button>
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ font: "800 15px 'Plus Jakarta Sans'", color: '#26324a' }}>Arquivos anexados ({docs.length})</div>
-        <Button icon={<Icon name="plus" size={17} />} onClick={() => { setForm({ name: '', kind: 'PDF' }); setAdding(true) }}>Adicionar documento</Button>
+      <div className="tab-head">
+        <h2 className="panel-title">Arquivos anexados <span>{docs.length}</span></h2>
+        <button className="btn-cta" onClick={() => { setForm({ name: '', kind: 'PDF' }); setAdding(true) }}><Icon name="plus" size={16} /> Adicionar documento</button>
       </div>
 
       {docs.length === 0 ? (
-        <div className="card"><EmptyState title="Nenhum documento" desc="Anexe RX, termos e orçamentos do paciente." action={<Button onClick={() => setAdding(true)}>Adicionar documento</Button>} /></div>
+        <div className="panel"><EmptyState title="Nenhum documento" desc="Anexe RX, termos e orçamentos do paciente." action={<Button onClick={() => setAdding(true)}>Adicionar documento</Button>} /></div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+        <div className="auto-grid" style={{ '--min': '220px', gap: 14 } as React.CSSProperties}>
           {docs.map((d) => (
-            <div key={d.id} className="card card-hover" style={{ padding: '16px 18px' }}>
+            <article key={d.id} className="panel">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ width: 42, height: 50, borderRadius: 9, background: '#e9eeff', color: '#3f6bf5', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                  <Icon name="share" size={20} />
+                <div style={{ width: 42, height: 50, borderRadius: 10, background: 'var(--primary-bg)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                  <Icon name="clipboard" size={20} />
                 </div>
                 <Menu items={[
-                  { label: 'Baixar', onClick: () => toast(`Baixando ${d.name}…`, 'info') },
-                  { label: 'Renomear', onClick: () => toast('Renomear — em breve.', 'info') },
                   { label: 'Excluir', danger: true, onClick: () => setConfirmDel(d) },
                 ]} />
               </div>
-              <div style={{ font: "700 13px 'Plus Jakarta Sans'", color: '#26324a' }}>{d.name}</div>
-              <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7', marginTop: 3 }}>{d.kind} · {d.date}</div>
-            </div>
+              <div style={{ font: '500 13.5px var(--font)', color: 'var(--ink)', overflowWrap: 'anywhere' }}>{d.name}</div>
+              <div style={{ font: '400 12px var(--font)', color: 'var(--muted)', marginTop: 3 }}>{d.kind} · {d.date}</div>
+            </article>
           ))}
         </div>
       )}
@@ -159,12 +157,12 @@ export default function Documentos() {
       <Modal open={adding} onClose={() => setAdding(false)} title="Adicionar documento" subtitle="Anexe um arquivo à ficha" width={420}
         footer={<><Button variant="outline" onClick={() => setAdding(false)}>Cancelar</Button><Button onClick={anexar}>Anexar</Button></>}>
         <input ref={fileRef} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { setFile(f); if (!form.name) setForm({ ...form, name: f.name }) } }} />
-        <button onClick={() => fileRef.current?.click()} style={{ width: '100%', border: '2px dashed #cdd8ff', borderRadius: 12, padding: '20px', textAlign: 'center', background: '#f5f8ff', color: file ? '#2f52e0' : '#8b93a7', font: "700 12px 'Plus Jakarta Sans'", cursor: 'pointer' }}>
+        <button onClick={() => fileRef.current?.click()} style={{ width: '100%', border: '2px dashed var(--primary-border)', borderRadius: 12, padding: '20px', textAlign: 'center', background: 'var(--bg-soft)', color: file ? 'var(--primary-dark)' : 'var(--muted)', font: "700 12px var(--font)", cursor: 'pointer' }}>
           {file ? `✓ ${file.name}` : 'Clique para escolher um arquivo'}
         </button>
         <Field label="Nome do documento"><TextInput autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex.: RX periapical" /></Field>
         <Field label="Tipo"><Select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}><option>PDF</option><option>Imagem</option><option>Documento</option></Select></Field>
-        {google.connected && <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7' }}>O arquivo será enviado ao Google Drive (pasta do paciente).</div>}
+        {google.connected && <div style={{ font: "600 11px var(--font)", color: 'var(--muted)' }}>O arquivo será enviado ao Google Drive (pasta do paciente).</div>}
       </Modal>
 
       <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={() => { if (confirmDel) { remove(confirmDel.id); toast('Documento excluído.') } }}

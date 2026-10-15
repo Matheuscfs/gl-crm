@@ -66,7 +66,7 @@ export default function FichaProcedimento() {
     <>
       <header className="topbar">
         <div className="topbar-title">Ficha de Procedimento</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="topbar-actions">
           <label className="searchbox" style={{ width: 260 }}>
             <Icon name="search" size={18} />
             <input placeholder="Buscar procedimento…" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -77,14 +77,14 @@ export default function FichaProcedimento() {
         </div>
       </header>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px', display: 'grid', gridTemplateColumns: '320px 1fr', gap: 20, minHeight: 0 }}>
+      <div className="page-body split-nav" style={{ '--nav': '320px' } as React.CSSProperties}>
         {/* Lista de procedimentos */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 18px 12px', font: "800 15px 'Plus Jakarta Sans'", color: '#1a2426', borderBottom: '1px solid #f0f2f2' }}>
+          <div style={{ padding: '16px 18px 12px', font: "800 15px var(--font)", color: 'var(--ink)', borderBottom: '1px solid var(--line)' }}>
             Procedimentos & preços
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: 8 }}>
-            {list.length === 0 && <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8a9699', padding: '12px 10px' }}>Nenhum procedimento. Clique em “Novo procedimento”.</div>}
+            {list.length === 0 && <div style={{ font: "600 12px var(--font)", color: 'var(--muted)', padding: '12px 10px' }}>Nenhum procedimento. Clique em “Novo procedimento”.</div>}
             {list.map((p) => {
               const active = p.id === selId
               return (
@@ -94,14 +94,14 @@ export default function FichaProcedimento() {
                   style={{
                     display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: '10px 12px', marginBottom: 2,
                     borderRadius: 10, border: 'none', cursor: 'pointer',
-                    background: active ? '#3f6bf5' : 'transparent', color: active ? '#fff' : '#5b6a6d',
+                    background: active ? 'var(--primary)' : 'transparent', color: active ? '#fff' : 'var(--slate)',
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ font: "700 12.5px 'Plus Jakarta Sans'", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.proc}</div>
-                    <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: active ? 'rgba(255,255,255,.75)' : '#8a9699' }}>{p.cat} · {p.lines.length} materia{p.lines.length === 1 ? 'l' : 'is'}</div>
+                    <div style={{ font: "700 12.5px var(--font)", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.proc}</div>
+                    <div style={{ font: "600 11px var(--font)", color: active ? 'rgba(255,255,255,.75)' : 'var(--muted)' }}>{p.cat} · {p.lines.length} materia{p.lines.length === 1 ? 'l' : 'is'}</div>
                   </div>
-                  <span className="tnum" style={{ font: "700 12px 'Plus Jakarta Sans'", flex: 'none', color: active ? '#fff' : '#26324a' }}>{fmtMoney(p.val)}</span>
+                  <span className="tnum" style={{ font: "700 12px var(--font)", flex: 'none', color: active ? '#fff' : 'var(--ink)' }}>{fmtMoney(p.val)}</span>
                 </button>
               )
             })}
@@ -115,21 +115,21 @@ export default function FichaProcedimento() {
           </div>
         ) : (
           <div className="card" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid #f0f2f2', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 12 }}>
               <input
                 value={sel.proc}
                 onChange={(e) => updateProcedimento(sel.id, { proc: e.target.value })}
                 placeholder="Nome do procedimento"
-                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', font: "800 16px 'Plus Jakarta Sans'", color: '#1a2426' }}
+                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', font: "800 16px var(--font)", color: 'var(--ink)' }}
               />
               <button className="icon-btn" title="Excluir procedimento" onClick={() => setConfirmDel(sel)}
-                style={{ width: 34, height: 34, borderRadius: 9, background: '#fbeaea', border: 'none', color: '#a81e1e', cursor: 'pointer' }}>
+                style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--red-bg)', border: 'none', color: 'var(--danger-text)', cursor: 'pointer' }}>
                 <Icon name="trash" size={17} />
               </button>
             </div>
 
             {/* Preços / dados do procedimento */}
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid #f0f2f2' }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--line)' }}>
               <FieldRow>
                 <Field label="Categoria"><TextInput value={sel.cat} onChange={(e) => updateProcedimento(sel.id, { cat: e.target.value })} placeholder="Ex.: Dentística" /></Field>
                 <Field label="Duração (min)"><TextInput type="number" min={5} step={5} value={String(sel.durMin || '')} onChange={(e) => updateProcedimento(sel.id, { durMin: Math.max(0, Number(e.target.value) || 0) })} placeholder="Ex.: 40" /></Field>
@@ -137,8 +137,9 @@ export default function FichaProcedimento() {
               </FieldRow>
             </div>
 
-            <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8a9699', padding: '12px 20px 4px' }}>Ficha técnica — materiais consumidos a cada execução</div>
+            <div style={{ font: "600 11.5px var(--font)", color: 'var(--muted)', padding: '12px 20px 4px' }}>Ficha técnica — materiais consumidos a cada execução</div>
 
+            <div className="table-x" style={{ '--table-min': '520px' } as React.CSSProperties}>
             <div className="table-head" style={{ gridTemplateColumns: GRID, gap: 14, padding: '8px 20px' }}>
               <span>MATERIAL</span>
               <span style={{ textAlign: 'right' }}>CONSUMO</span>
@@ -146,9 +147,9 @@ export default function FichaProcedimento() {
               <span />
             </div>
 
-            <div style={{ flex: 1, overflow: 'auto' }}>
+            <div className="table-body">
               {sel.lines.length === 0 && (
-                <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8a9699', padding: '14px 20px' }}>
+                <div style={{ font: "600 12px var(--font)", color: 'var(--muted)', padding: '14px 20px' }}>
                   Nenhum material. Clique em “Adicionar material”.
                 </div>
               )}
@@ -164,26 +165,27 @@ export default function FichaProcedimento() {
                         emptyText="Sem correspondência no estoque."
                         onChange={(v) => setLine(idx, { item: v })}
                       />
-                      <div style={{ font: "600 10.5px 'Plus Jakarta Sans'", color: stock ? '#127436' : '#c48a1a', marginTop: 3 }}>
+                      <div style={{ font: "600 10.5px var(--font)", color: stock ? 'var(--green-dark)' : '#c48a1a', marginTop: 3 }}>
                         {stock ? `saldo: ${stock.qtd} ${stock.un}` : l.item.trim() ? 'não cadastrado no estoque' : ' '}
                       </div>
                     </div>
                     <TextInput type="number" min={0} value={String(l.qtd)} onChange={(e) => setLine(idx, { qtd: Number(e.target.value) || 0 })} style={{ textAlign: 'right' }} />
                     <TextInput value={l.label} onChange={(e) => setLine(idx, { label: e.target.value })} placeholder="Ex.: 1 tubete" />
                     <button className="icon-btn" title="Remover material" onClick={() => removeLine(idx)}
-                      style={{ width: 30, height: 30, borderRadius: 8, background: 'transparent', border: 'none', color: '#a81e1e', cursor: 'pointer' }}>
+                      style={{ width: 30, height: 30, borderRadius: 8, background: 'transparent', border: 'none', color: 'var(--danger-text)', cursor: 'pointer' }}>
                       <Icon name="trash" size={16} />
                     </button>
                   </div>
                 )
               })}
             </div>
+            </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 20px', borderTop: '1px solid #f0f2f2' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '12px 20px', borderTop: '1px solid var(--line)' }}>
               <Button variant="outline" icon={<Icon name="plus" size={16} />} onClick={addLine}>Adicionar material</Button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#2f52e0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--primary-dark)' }}>
                 <Icon name="box" size={15} />
-                <span style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#2f52e0' }}>Baixa automática no estoque ao concluir o atendimento.</span>
+                <span style={{ font: "600 11.5px var(--font)", color: 'var(--primary-dark)' }}>Baixa automática no estoque ao concluir o atendimento.</span>
               </div>
             </div>
           </div>

@@ -70,42 +70,40 @@ export default function Historico() {
   const cobrancaVal = matched?.val ?? 0
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px 28px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, maxWidth: 840 }}>
-        <div style={{ font: "800 15px 'Plus Jakarta Sans'", color: '#26324a' }}>Tratamentos executados ({rows.length})</div>
-        <Button icon={<Icon name="plus" size={17} />} onClick={() => { setForm(EMPTY); setOpen(true) }}>Novo atendimento</Button>
-      </div>
-
-      {rows.length === 0 ? (
-        <div className="card" style={{ maxWidth: 840 }}><EmptyState icon="cal" title="Nenhum atendimento registrado" desc="Registre o primeiro atendimento deste paciente." action={<Button onClick={() => setOpen(true)}>Novo atendimento</Button>} /></div>
-      ) : (
-        <div style={{ maxWidth: 840 }}>
-          {rows.map((h, i) => {
-            const frk = FRANKL[h.frankl]
-            const last = i === rows.length - 1
-            return (
-              <div key={h.id} style={{ display: 'flex', gap: 18 }}>
-                <div style={{ width: 92, textAlign: 'right', font: "700 12px 'JetBrains Mono'", color: '#5b647a', paddingTop: 3, flex: 'none' }}>{h.date}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', alignSelf: 'stretch', flex: 'none' }}>
-                  <span style={{ width: 13, height: 13, borderRadius: '50%', background: '#3f6bf5', boxShadow: '0 0 0 3px #dbe4ff', marginTop: 4 }} />
-                  {!last && <span style={{ width: 2, flex: 1, background: '#eceff6', margin: '4px 0' }} />}
-                </div>
-                <div className="card card-hover" style={{ flex: 1, padding: '15px 18px', marginBottom: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                    <span style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a' }}>{h.proc}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {frk && <span style={{ padding: '3px 10px', borderRadius: 20, font: "700 11px 'Plus Jakarta Sans'", whiteSpace: 'nowrap', background: frk.bg, color: frk.fg }}>Frankl {frk.label}</span>}
-                      <Menu items={[{ label: 'Excluir', danger: true, onClick: () => { remove(h.id); toast('Atendimento removido.') } }]} />
-                    </div>
-                  </div>
-                  <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7', margin: '3px 0 8px' }}>{h.prof}</div>
-                  <div style={{ font: "500 12.5px/1.5 'Plus Jakarta Sans'", color: '#5b647a' }}>{h.note}</div>
-                </div>
-              </div>
-            )
-          })}
+    <div className="tab-body">
+      <div className="tab-narrow">
+        <div className="tab-head">
+          <h2 className="panel-title">Tratamentos executados <span>{rows.length}</span></h2>
+          <button className="btn-cta" onClick={() => { setForm(EMPTY); setOpen(true) }}><Icon name="plus" size={16} /> Novo atendimento</button>
         </div>
-      )}
+
+        {rows.length === 0 ? (
+          <div className="panel"><EmptyState icon="cal" title="Nenhum atendimento registrado" desc="Registre o primeiro atendimento deste paciente." action={<Button onClick={() => setOpen(true)}>Novo atendimento</Button>} /></div>
+        ) : (
+          <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {rows.map((h, i) => {
+              const frk = FRANKL[h.frankl]
+              const last = i === rows.length - 1
+              return (
+                <li key={h.id} className="tl-row">
+                  <div className="tl-date">{h.date}</div>
+                  <div className="tl-rail" aria-hidden="true"><span className="dot" />{!last && <span className="line" />}</div>
+                  <article className="panel tl-card">
+                    <div className="entry-head">
+                      <span className="when">{h.date} ·</span>
+                      <h3 style={{ margin: 0, flex: '1 1 160px', minWidth: 0, font: '500 14px var(--font)', color: 'var(--ink)' }}>{h.proc}</h3>
+                      {frk && <span style={{ padding: '3px 10px', borderRadius: 20, font: '600 11px var(--font)', whiteSpace: 'nowrap', background: frk.bg, color: frk.fg }}>Frankl {frk.label}</span>}
+                      <span style={{ marginLeft: 'auto' }}><Menu items={[{ label: 'Excluir', danger: true, onClick: () => { remove(h.id); toast('Atendimento removido.') } }]} /></span>
+                    </div>
+                    <div style={{ font: '400 12px var(--font)', color: 'var(--muted)', marginTop: 3 }}>{h.prof}</div>
+                    {h.note && <p className="entry-text">{h.note}</p>}
+                  </article>
+                </li>
+              )
+            })}
+          </ol>
+        )}
+      </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Novo atendimento" subtitle="Registro na timeline do paciente" dirty={!!(form.proc.trim() || form.note.trim())}
         footer={<><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={submit}>Registrar</Button></>}>
@@ -126,15 +124,15 @@ export default function Historico() {
         <Field label="Profissional"><TextInput value={form.prof} onChange={(e) => setForm({ ...form, prof: e.target.value })} /></Field>
         <Field label="Observações"><Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Conduta, intercorrências, orientações…" /></Field>
         {hasBom && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 4, padding: '10px 12px', background: '#e9eeff', borderRadius: 10, cursor: 'pointer' }}>
-            <input type="checkbox" checked={autoBaixa} onChange={(e) => setAutoBaixa(e.target.checked)} style={{ accentColor: '#3f6bf5', width: 15, height: 15 }} />
-            <span style={{ font: "600 11.5px/1.4 'Plus Jakarta Sans'", color: '#2f52e0' }}>Dar baixa automática dos materiais da ficha técnica deste procedimento no estoque.</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 4, padding: '10px 12px', background: 'var(--primary-bg)', borderRadius: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={autoBaixa} onChange={(e) => setAutoBaixa(e.target.checked)} style={{ accentColor: 'var(--primary)', width: 15, height: 15 }} />
+            <span style={{ font: "600 11.5px/1.4 var(--font)", color: 'var(--primary-dark)' }}>Dar baixa automática dos materiais da ficha técnica deste procedimento no estoque.</span>
           </label>
         )}
         {cobrancaVal > 0 && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 4, padding: '10px 12px', background: '#e7f6ee', borderRadius: 10, cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 4, padding: '10px 12px', background: 'var(--green-bg)', borderRadius: 10, cursor: 'pointer' }}>
             <input type="checkbox" checked={autoCobranca} onChange={(e) => setAutoCobranca(e.target.checked)} style={{ accentColor: '#2f9a5b', width: 15, height: 15 }} />
-            <span style={{ font: "600 11.5px/1.4 'Plus Jakarta Sans'", color: '#217a47' }}>Gerar cobrança de <b>{fmtMoney(cobrancaVal)}</b> em contas a receber (Financeiro).</span>
+            <span style={{ font: "600 11.5px/1.4 var(--font)", color: 'var(--green-dark)' }}>Gerar cobrança de <b>{fmtMoney(cobrancaVal)}</b> em contas a receber (Financeiro).</span>
           </label>
         )}
       </Modal>

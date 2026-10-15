@@ -11,20 +11,35 @@ import { useStore, type EventItem, type Procedimento } from '../store'
 import { dayRange, type Range } from '../lib/horarios'
 import { useGoogle } from '../lib/GoogleProvider'
 import { pushAppointment } from '../lib/googleCalendar'
-import { mondayOf, addDays, todayISO, weekColumns, weekRangeLabel, longDate, isoDate, parseISO, brDate } from '../lib/dates'
+import { mondayOf, addDays, addMonths, todayISO, weekColumns, weekRangeLabel, longDate, isoDate, parseISO, brDate } from '../lib/dates'
 import { waLink, findPatientByName, contactPhone, contactName } from '../lib/whats'
+import { msgConfirmacao } from '../lib/mensagens'
 import { WaButton } from '../components/ui'
 import { fmtDur, fmtMoney } from '../lib/fmt'
 import { DateField } from '../components/DateField'
 import { Butterfly } from './documents/DocKit'
 import { STATUS, timeLabels, fmtHour, AGENDA_START, AGENDA_ROW, PERFIL, perfilToKind, type ApptStatus, type ApptKind, type Patient } from '../data'
 import { PatientPhoto } from '../components/PatientPhoto'
+import { useMediaQuery } from '../lib/useTablet'
 
 const LEGEND: ApptStatus[] = ['agendado', 'confirmado', 'em_atendimento', 'concluido', 'faltou', 'desmarcado']
-const VIEWS = ['Diária', 'Semanal', 'Mensal']
+const VIEWS: [string, string][] = [['Diária', 'Dia'], ['Semanal', 'Semana'], ['Mensal', 'Mês']]
+const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+const WD_ABBR = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
 const snapHalf = (h: number) => Math.round(h * 2) / 2
 /** Último horário da grade (as etiquetas cobrem AGENDA_START … AGENDA_START + n). */
 const AGENDA_END = AGENDA_START + timeLabels.length
+
+type Filtro = 'todos' | 'agendado' | 'confirmado' | 'concluido' | 'faltou'
+const FILTROS: { key: Filtro; label: string; alerta?: boolean }[] = [
+  { key: 'todos', label: 'Todos' },
+  { key: 'agendado', label: 'Sem confirmação', alerta: true },
+  { key: 'confirmado', label: 'Confirmados' },
+  { key: 'concluido', label: 'Concluídos' },
+  { key: 'faltou', label: 'Faltas' },
+]
+
+const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`
 
 /** Blocos de 30 min do expediente — as opções do campo "Horário". */
 function HourOptions({ range }: { range?: Range }) {
@@ -73,15 +88,15 @@ function layoutLanes(events: EventItem[]): Record<string, { lane: number; lanes:
 }
 
 function KindMark({ kind }: { kind?: ApptKind }) {
-  if (kind === 'est') return <span title="Estético" style={{ display: 'inline-flex' }}><Butterfly size={13} color="#c2478a" /></span>
+  if (kind === 'est') return <span title="Estético" style={{ display: 'inline-flex', flex: 'none' }}><Butterfly size={13} color="#b23a7e" /></span>
   if (kind === 'adt') return (
-    <span title="Adulto" style={{ display: 'inline-flex' }}>
-      <svg width="12" height="13" viewBox="0 0 24 24" fill="#0f766e"><circle cx="12" cy="7.5" r="3.6" /><path d="M4.5 20c0-4 3.6-6 7.5-6s7.5 2 7.5 6z" /></svg>
+    <span title="Adulto" style={{ display: 'inline-flex', flex: 'none' }}>
+      <svg width="12" height="13" viewBox="0 0 24 24" fill="#0f766e" aria-hidden="true"><circle cx="12" cy="7.5" r="3.6" /><path d="M4.5 20c0-4 3.6-6 7.5-6s7.5 2 7.5 6z" /></svg>
     </span>
   )
   return (
-    <span title="Pediátrico" style={{ display: 'inline-flex' }}>
-      <svg width="12" height="13" viewBox="0 0 24 24" fill="#3f6bf5"><path d="M12 3.4c-2.1-1.5-5-1.6-6.7.2-1.9 2-1.6 5.2-.8 8.2.5 1.9.8 3.4 1.1 5 .3 1.8 1.7 3.4 2.6 1.3.6-1.5.6-3.4 1.8-3.4s1.2 1.9 1.8 3.4c.9 2.1 2.3.5 2.6-1.3.3-1.6.6-3.1 1.1-5 .8-3 1.1-6.2-.8-8.2-1.7-1.8-4.6-1.7-6.7-.2z" /></svg>
+    <span title="Pediátrico" style={{ display: 'inline-flex', flex: 'none' }}>
+      <svg width="12" height="13" viewBox="0 0 24 24" fill="#5b2196" aria-hidden="true"><path d="M12 3.4c-2.1-1.5-5-1.6-6.7.2-1.9 2-1.6 5.2-.8 8.2.5 1.9.8 3.4 1.1 5 .3 1.8 1.7 3.4 2.6 1.3.6-1.5.6-3.4 1.8-3.4s1.2 1.9 1.8 3.4c.9 2.1 2.3.5 2.6-1.3.3-1.6.6-3.1 1.1-5 .8-3 1.1-6.2-.8-8.2-1.7-1.8-4.6-1.7-6.7-.2z" /></svg>
     </span>
   )
 }
@@ -98,13 +113,13 @@ function PatientPicker({ value, patients, onType, onPick }: { value: string; pat
       {open && (
         <div className="menu-pop" style={{ left: 0, right: 0, width: 'auto', maxHeight: 240, overflow: 'auto' }}>
           {results.length === 0 ? (
-            <div style={{ padding: '9px 11px', font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Nenhum cadastrado — será um novo nome.</div>
+            <div style={{ padding: '9px 11px', font: "400 12px var(--font)", color: 'var(--muted)' }}>Nenhum cadastrado — será um novo nome.</div>
           ) : results.map((p) => (
             <button key={p.name} className="menu-item" onClick={() => { onPick(p); setOpen(false) }}>
-              <span className="avatar" style={{ width: 26, height: 26, font: "800 10px 'Plus Jakarta Sans'" }}>{p.initials}</span>
+              <span className="avatar" style={{ width: 26, height: 26, font: "600 10px var(--font)" }}>{p.initials}</span>
               <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                <span style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{p.name}</span>
-                <span style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7' }}>{p.age} · {PERFIL[p.perfil ?? 'pediatrico'].label}</span>
+                <span style={{ font: "500 12.5px var(--font)", color: 'var(--ink)' }}>{p.name}</span>
+                <span style={{ font: "400 11px var(--font)", color: 'var(--muted)' }}>{p.age} · {PERFIL[p.perfil ?? 'pediatrico'].label}</span>
               </span>
             </button>
           ))}
@@ -123,18 +138,18 @@ function ProcPicker({ value, procs, onType, onPick }: { value: string; procs: Pr
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <input className="field-input" value={value} placeholder="Selecione ou digite" onClick={() => setOpen(true)} onChange={(e) => { onType(e.target.value); setOpen(true) }} />
-      <span style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%) rotate(-90deg)', pointerEvents: 'none', color: '#8b93a7' }}><Icon name="chevron" size={16} /></span>
+      <span style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--muted)', display: 'flex' }}><Icon name="chevDown" size={16} /></span>
       {open && (
         <div className="menu-pop" style={{ left: 0, right: 0, width: 'auto', maxHeight: 240, overflow: 'auto' }}>
           {results.length === 0 ? (
-            <div style={{ padding: '9px 11px', font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Sem correspondência — será um novo procedimento.</div>
+            <div style={{ padding: '9px 11px', font: "400 12px var(--font)", color: 'var(--muted)' }}>Sem correspondência — será um novo procedimento.</div>
           ) : results.map((p) => (
             <button key={p.id} className="menu-item" onClick={() => { onPick(p); setOpen(false) }}>
               <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
-                <span style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{p.proc}</span>
-                <span style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7' }}>{p.cat} · {fmtDur(p.durMin)}</span>
+                <span style={{ font: "500 12.5px var(--font)", color: 'var(--ink)' }}>{p.proc}</span>
+                <span style={{ font: "400 11px var(--font)", color: 'var(--muted)' }}>{p.cat} · {fmtDur(p.durMin)}</span>
               </span>
-              <span className="tnum" style={{ font: "700 12px 'Plus Jakarta Sans'", color: '#26324a', flex: 'none' }}>{fmtMoney(p.val)}</span>
+              <span className="tnum" style={{ font: "600 12px var(--font)", color: 'var(--ink)', flex: 'none' }}>{fmtMoney(p.val)}</span>
             </button>
           ))}
         </div>
@@ -143,25 +158,31 @@ function ProcPicker({ value, procs, onType, onPick }: { value: string; procs: Pr
   )
 }
 
+/** Situação escrita no cartão: "agendado" de hoje em diante é "Sem confirmação". */
+const situacao = (e: EventItem) => (e.status === 'agendado' && e.date >= todayISO() ? 'Sem confirmação' : STATUS[e.status].label)
+/** Versão curta para caber na coluna da semana (~120 px) ao lado do horário. */
+const ROTULO_CURTO: Record<ApptStatus, string> = {
+  agendado: 'Agendado', confirmado: 'Confirmado', em_atendimento: 'Em sala', concluido: 'Concluído', faltou: 'Faltou', desmarcado: 'Desmarcado',
+}
+const situacaoCurta = (e: EventItem) => (e.status === 'agendado' && e.date >= todayISO() ? 'A confirmar' : ROTULO_CURTO[e.status])
+
 /* ---------- evento arrastável + redimensionável ---------- */
-function EventCard({ e, onClick, dragging, displayStart }: { e: EventItem; onClick?: () => void; dragging?: boolean; displayStart?: number }) {
-  const st = STATUS[e.status]
+function EventCard({ e, onClick, dragging, displayStart, compact }: { e: EventItem; onClick?: () => void; dragging?: boolean; displayStart?: number; compact?: boolean }) {
   const time = displayStart ?? e.start
   const { patients } = useStore()
-  const photo = findPatientByName(patients, e.child)?.photoUrl
+  // na semana a coluna é estreita: a foto só aparece na visão Diária
+  const photo = compact ? undefined : findPatientByName(patients, e.child)?.photoUrl
+  const passado = e.date < todayISO()
   return (
-    <div onClick={onClick} style={{ height: '100%', display: 'flex', gap: 7, alignItems: 'flex-start', background: st.bg, border: `1px solid ${st.border}`, borderLeft: `3px solid ${st.dot}`, borderRadius: 9, padding: '6px 9px', overflow: 'hidden', cursor: dragging ? 'grabbing' : 'pointer', boxShadow: dragging ? '0 14px 28px -10px rgba(38,60,110,.55)' : '0 1px 2px rgba(15,40,45,.05)' }}>
-      {/* foto à esquerda, ocupando a altura das linhas de texto */}
-      {photo && <PatientPhoto src={photo} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flex: 'none', marginTop: 2, boxShadow: '0 0 0 1.5px #fff' }} />}
+    <div onClick={onClick} className={`ev-card ev-${e.status}${passado ? ' passado' : ''}${dragging ? ' dragging' : ''}`}
+      title={`${e.child} · ${e.proc} · ${fmtHour(e.start)}–${fmtHour(e.start + e.dur)} · ${situacao(e)}`}>
+      {photo && <PatientPhoto src={photo} style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', flex: 'none', marginTop: 2, boxShadow: '0 0 0 1.5px var(--surface)' }} />}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span className="tnum" style={dragging
-            ? { font: "800 11px 'JetBrains Mono'", color: '#2f52e0', background: '#e0e8ff', padding: '1px 6px', borderRadius: 5, whiteSpace: 'nowrap' }
-            : { font: "700 10px 'JetBrains Mono'", color: st.fg, whiteSpace: 'nowrap' }}>{fmtHour(time)} – {fmtHour(time + e.dur)}</span>
-          <KindMark kind={e.kind} />
-        </div>
-        <div style={{ font: "800 12px 'Plus Jakarta Sans'", color: '#26324a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.child} <span style={{ fontWeight: 600, color: '#5b647a' }}>{e.age}</span></div>
-        <div style={{ font: "600 10.5px 'Plus Jakarta Sans'", color: '#5b647a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.proc}</div>
+        {dragging
+          ? <span className="ev-meta live">{fmtHour(time)} – {fmtHour(time + e.dur)}</span>
+          : <span className="ev-meta"><b>{fmtHour(time)}</b> {compact ? situacaoCurta(e) : situacao(e)}</span>}
+        <div className="ev-name"><KindMark kind={e.kind} /> {e.child} <span>{e.age}</span></div>
+        <div className="ev-proc">{e.proc}</div>
       </div>
     </div>
   )
@@ -176,8 +197,9 @@ function DraggableEvent({ e, onOpen, onResize, lane = 0, lanes = 1, colW = 0, ra
     down.preventDefault()
     const y0 = down.clientY
     const dur0 = e.dur
+    const teto = Math.min(AGENDA_END, range?.end ?? AGENDA_END) - e.start
     const move = (m: PointerEvent) => {
-      const next = Math.max(0.5, snapHalf(dur0 + (m.clientY - y0) / AGENDA_ROW))
+      const next = Math.min(Math.max(0.5, teto), Math.max(0.5, snapHalf(dur0 + (m.clientY - y0) / AGENDA_ROW)))
       onResize(e.id, next)
     }
     const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
@@ -188,23 +210,21 @@ function DraggableEvent({ e, onOpen, onResize, lane = 0, lanes = 1, colW = 0, ra
   // Ajuste em blocos (Google Agenda): vertical trava em 30 min; horizontal trava por coluna (dia).
   const dyHours = transform ? (Math.round(transform.y / HALF_ROW) * HALF_ROW) / AGENDA_ROW : 0
   const lo = Math.max(AGENDA_START, range?.start ?? AGENDA_START)
-  const hi = Math.min(18, range?.end ?? 18) - e.dur
+  const hi = Math.min(AGENDA_END, range?.end ?? AGENDA_END) - e.dur
   const liveStart = Math.max(lo, Math.min(Math.max(lo, hi), snapHalf(e.start + dyHours)))
   const sy = (liveStart - e.start) * AGENDA_ROW // card acompanha o horário travado, dentro do expediente
   const sx = transform ? (colW ? Math.round(transform.x / colW) * colW : transform.x) : 0
   return (
-    <div ref={setNodeRef} style={{
+    <div ref={setNodeRef} className="ev-wrap" style={{
       position: 'absolute', left: `calc(${lane * w}% + 4px)`, width: `calc(${w}% - 8px)`,
-      top: (e.start - AGENDA_START) * AGENDA_ROW, height: e.dur * AGENDA_ROW - 6,
+      top: (e.start - AGENDA_START) * AGENDA_ROW + 1, height: e.dur * AGENDA_ROW - 6,
       transform: isDragging ? `translate3d(${sx}px, ${sy}px, 0)` : undefined,
       zIndex: isDragging ? 50 : 1, touchAction: 'none',
     }}>
       <div {...listeners} {...attributes} style={{ height: '100%' }}>
-        <EventCard e={e} onClick={() => onOpen(e)} dragging={isDragging} displayStart={isDragging ? liveStart : undefined} />
+        <EventCard e={e} onClick={() => onOpen(e)} dragging={isDragging} displayStart={isDragging ? liveStart : undefined} compact />
       </div>
-      <div onPointerDown={startResize} title="Arraste para mudar a duração" style={{ position: 'absolute', left: 0, right: 0, bottom: -3, height: 10, cursor: 'ns-resize' }}>
-        <div style={{ width: 26, height: 3, borderRadius: 3, background: '#9aa6bd', margin: '4px auto 0' }} />
-      </div>
+      <div className="resize-grip" onPointerDown={startResize} title="Arraste para mudar a duração" />
     </div>
   )
 }
@@ -215,19 +235,19 @@ function slotAtPointer(e: React.MouseEvent<HTMLElement>): number {
   return AGENDA_START + Math.floor((e.clientY - rect.top) / HALF_ROW) / 2
 }
 
-/** Faixa pontilhada que segue o cursor mostrando onde o agendamento cairia. */
+/** Faixa tracejada que segue o cursor mostrando onde o agendamento cairia. */
 function NewSlotGhost({ hour }: { hour: number }) {
+  return <div className="slot-ghost" style={{ top: (hour - AGENDA_START) * AGENDA_ROW + 1, height: HALF_ROW - 3 }}>+ {fmtHour(hour)}</div>
+}
+
+/** Fora do expediente fica listrado (como no Google Agenda); dia fechado inteiro também. */
+function OffHours({ range }: { range?: Range }) {
+  if (!range) return <><div className="off-hours" style={{ top: 0, bottom: 0 }} /><span className="closed-chip">Fechado</span></>
   return (
-    <div style={{
-      position: 'absolute', left: 4, right: 4,
-      top: (hour - AGENDA_START) * AGENDA_ROW, height: HALF_ROW - 3,
-      border: '1.5px dashed #9db4fb', borderRadius: 8, background: 'rgba(63,107,245,0.07)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-      font: "700 10.5px 'Plus Jakarta Sans'", color: '#2f52e0',
-      pointerEvents: 'none', overflow: 'hidden', whiteSpace: 'nowrap',
-    }}>
-      + {fmtHour(hour)}
-    </div>
+    <>
+      {range.start > AGENDA_START && <div className="off-hours" style={{ top: 0, height: (range.start - AGENDA_START) * AGENDA_ROW }} />}
+      {range.end < AGENDA_END && <div className="off-hours" style={{ top: (range.end - AGENDA_START) * AGENDA_ROW, bottom: 0 }} />}
+    </>
   )
 }
 
@@ -241,10 +261,10 @@ function DayColumn({ iso, today, range, onCreate, children }: { iso: string; tod
   // arrastar/redimensionar um card termina em "click" na coluna (o alvo do click vira o
   // ancestral comum): exigir que o clique tenha COMEÇADO no fundo descarta esses casos.
   const abriuNoFundo = useRef(false)
-  // fundo translúcido para que as linhas de hora (desenhadas na grade) apareçam em todas as colunas
   return (
     <div
       ref={setNodeRef}
+      className={`day-col${today ? ' today' : ''}${isOver ? ' over' : ''}${closed ? '' : ' open'}`}
       onMouseMove={(e) => {
         if (closed || !noFundo(e)) return setGhost(null)
         const h = slotAtPointer(e)
@@ -253,12 +273,8 @@ function DayColumn({ iso, today, range, onCreate, children }: { iso: string; tod
       onMouseLeave={() => setGhost(null)}
       onMouseDown={(e) => { abriuNoFundo.current = noFundo(e) }}
       onClick={(e) => { if (!abriuNoFundo.current || !noFundo(e)) return; onCreate(iso, slotAtPointer(e)) }}
-      style={{ position: 'relative', borderLeft: '1px solid #eff2f9', cursor: closed ? 'default' : 'copy', background: closed ? 'rgba(140,150,170,0.12)' : isOver ? 'rgba(63,107,245,0.10)' : today ? 'rgba(63,107,245,0.05)' : 'transparent', transition: 'background 0.15s ease' }}
     >
-      {/* fora do expediente fica sombreado (como no Google Agenda) */}
-      {range && range.start > AGENDA_START && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: (range.start - AGENDA_START) * AGENDA_ROW, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
-      {range && range.end < 19 && <div style={{ position: 'absolute', left: 0, right: 0, top: (range.end - AGENDA_START) * AGENDA_ROW, bottom: 0, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
-      {closed && <div style={{ position: 'absolute', top: 10, left: 0, right: 0, textAlign: 'center', font: "700 10px 'Plus Jakarta Sans'", letterSpacing: '.08em', color: '#9aa4b6', pointerEvents: 'none' }}>FECHADO</div>}
+      <OffHours range={range} />
       {ghost !== null && <NewSlotGhost hour={ghost} />}
       {children}
     </div>
@@ -270,6 +286,7 @@ const EMPTY = (date: string) => ({ date, hour: '9', dur: '1', child: '', age: ''
 export default function Agenda() {
   const [view, setView] = useState('Semanal')
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()))
+  const [monthAnchor, setMonthAnchor] = useState(() => `${todayISO().slice(0, 7)}-01`)
   const { events, patients, procedimentos, horarios, addAppointment, updateAppointment, deleteAppointment, moveAppointment, baixaProcedimento, gerarCobranca } = useStore()
   const { toast } = useToast()
   const google = useGoogle()
@@ -279,17 +296,21 @@ export default function Agenda() {
   const [detail, setDetail] = useState<EventItem | null>(null)
   const [confirmDel, setConfirmDel] = useState(false)
   const [dayFocus, setDayFocus] = useState(todayISO())
+  const [filtro, setFiltro] = useState<Filtro>('todos')
   const gridRef = useRef<HTMLDivElement>(null)
   const [colW, setColW] = useState(0)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  const today = todayISO()
+  // celular: lista do dia com faixa de dias (a grade da semana não cabe em 375 px)
+  const celular = useMediaQuery('(max-width: 640px)')
 
   const cols = useMemo(() => weekColumns(weekStart), [weekStart])
   const byDate = useMemo(() => {
     const m: Record<string, EventItem[]> = {}
-    events.forEach((e) => { (m[e.date] ??= []).push(e) })
+    events.forEach((e) => { if (filtro === 'todos' || e.status === filtro) (m[e.date] ??= []).push(e) })
     Object.values(m).forEach((l) => l.sort((a, b) => a.start - b.start))
     return m
-  }, [events])
+  }, [events, filtro])
   // duração sugerida por procedimento (durMin numérico → horas, em blocos de 30 min)
   const procDur = useMemo(() => {
     const map: Record<string, number> = {}
@@ -297,12 +318,56 @@ export default function Agenda() {
     return map
   }, [procedimentos])
 
+  /* ---------- período visível e contagens dos filtros ---------- */
+  const periodo = useMemo(() => {
+    if (view === 'Diária') return { de: dayFocus, ate: dayFocus }
+    if (view === 'Mensal') {
+      const d = parseISO(monthAnchor)
+      return { de: monthAnchor, ate: isoDate(new Date(d.getFullYear(), d.getMonth() + 1, 0)) }
+    }
+    return { de: cols[0].iso, ate: cols[cols.length - 1].iso }
+  }, [view, dayFocus, monthAnchor, cols])
+  const doPeriodo = events.filter((e) => e.date >= periodo.de && e.date <= periodo.ate)
+  const contagem = (f: Filtro) => (f === 'todos' ? doPeriodo.length : doPeriodo.filter((e) => e.status === f).length)
+  const ativos = doPeriodo.filter((e) => e.status !== 'desmarcado').length
+  const semConfirmar = doPeriodo.filter((e) => e.status === 'agendado' && e.date >= today).length
+
+  const rotulo = view === 'Diária'
+    ? longDate(dayFocus)
+    : view === 'Mensal'
+      ? (() => { const d = parseISO(monthAnchor); return `${MONTHS[d.getMonth()][0].toUpperCase()}${MONTHS[d.getMonth()].slice(1)} de ${d.getFullYear()}` })()
+      : weekRangeLabel(weekStart)
+  const [rotAnterior, rotProximo] = view === 'Diária' ? ['Dia anterior', 'Próximo dia'] : view === 'Mensal' ? ['Mês anterior', 'Próximo mês'] : ['Semana anterior', 'Próxima semana']
+
+  const navegar = (dir: -1 | 1) => {
+    if (view === 'Diária') {
+      const d = addDays(dayFocus, dir)
+      setDayFocus(d)
+      setWeekStart(mondayOf(parseISO(d)))
+    } else if (view === 'Mensal') {
+      setMonthAnchor(addMonths(monthAnchor, dir))
+    } else {
+      setWeekStart(addDays(weekStart, 7 * dir))
+    }
+  }
+  const irParaHoje = () => {
+    setWeekStart(mondayOf(new Date()))
+    setDayFocus(today)
+    setMonthAnchor(`${today.slice(0, 7)}-01`)
+  }
+  const trocarVisao = (v: string) => {
+    // a Diária abre num dia da semana que estava aberta (hoje, se ela contém hoje)
+    if (v === 'Diária' && !cols.some((c) => c.iso === dayFocus)) setDayFocus(cols.find((c) => c.today)?.iso ?? cols[0].iso)
+    if (v === 'Mensal') setMonthAnchor(`${(view === 'Diária' ? dayFocus : cols.find((c) => c.today)?.iso ?? weekStart).slice(0, 7)}-01`)
+    setView(v)
+  }
+
   // conflito: outro atendimento ativo no mesmo dia cujo intervalo sobrepõe o informado
   const conflictAt = (date: string, start: number, dur: number, excludeId?: string) =>
     events.find((e) => e.date === date && e.id !== excludeId && e.status !== 'desmarcado' && e.status !== 'faltou' && start < e.start + e.dur && e.start < start + dur)
 
   const openNew = (date?: string, hour?: number) => {
-    const d = date ?? todayISO()
+    const d = date ?? today
     const range = dayRange(horarios, d)
     setForm({ ...EMPTY(d), hour: String(hour ?? range?.start ?? 9) })
     setOpen(true)
@@ -323,6 +388,7 @@ export default function Agenda() {
 
   const submit = () => {
     if (!form.child.trim()) return toast('Informe o paciente.', 'error')
+    if (!form.date) return toast('Informe a data do atendimento.', 'error')
     // respeita os horários de atendimento (Configurações)
     const range = dayRange(horarios, form.date)
     if (!range) return toast('A clínica não atende neste dia.', 'error')
@@ -355,7 +421,7 @@ export default function Agenda() {
     const range = dayRange(horarios, toDate)
     if (!range) { toast('A clínica não atende neste dia.', 'error'); return }
     const lo = Math.max(AGENDA_START, range.start)
-    const hi = Math.max(lo, Math.min(18, range.end) - ev.dur)
+    const hi = Math.max(lo, Math.min(AGENDA_END, range.end) - ev.dur)
     const newStart = Math.max(lo, Math.min(hi, snapHalf(ev.start + (e.delta.y || 0) / AGENDA_ROW)))
     if (toDate !== ev.date || newStart !== ev.start) {
       moveAppointment(ev.id, toDate, newStart)
@@ -387,70 +453,197 @@ export default function Agenda() {
   // edição direta de um agendamento existente (salva na hora, como o resto do app)
   const patchDetail = (p: Partial<EventItem>) => { if (!detail) return; updateAppointment(detail.id, p); setDetail({ ...detail, ...p }) }
 
+  /** Abre o WhatsApp do responsável (ou do paciente) com a confirmação pronta. */
+  const enviarConfirmacao = (e: EventItem) => {
+    const p = findPatientByName(patients, e.child)
+    const quando = e.date === today ? 'hoje' : e.date === addDays(today, 1) ? 'amanhã' : `em ${brDate(e.date)}`
+    const msg = msgConfirmacao(e.child, p, quando, fmtHour(e.start), e.proc, (e.kind ?? 'ped') === 'ped')
+    const link = waLink(contactPhone(p), msg)
+    if (!link) return toast(`Sem telefone cadastrado para ${e.child}. Complete o cadastro do paciente.`, 'error')
+    window.open(link, '_blank', 'noopener')
+  }
+
+  /* ---------- painel lateral ---------- */
+  const aConfirmar = useMemo(() => events
+    .filter((e) => e.status === 'agendado' && e.date >= today && e.date <= addDays(today, 6))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start)
+    .slice(0, 6), [events, today])
+
+  // próximo dia de atendimento a partir de amanhã, com as horas cheias ainda livres
+  const livres = useMemo(() => {
+    for (let i = 1; i <= 7; i++) {
+      const iso = addDays(today, i)
+      const r = dayRange(horarios, iso)
+      if (!r) continue
+      const doDia = events.filter((e) => e.date === iso && e.status !== 'desmarcado' && e.status !== 'faltou')
+      const slots: number[] = []
+      for (let h = Math.ceil(r.start); h + 1 <= r.end; h++) {
+        if (!doDia.some((e) => h < e.start + e.dur && e.start < h + 1)) slots.push(h)
+      }
+      return { iso, i, slots }
+    }
+    return null
+  }, [events, horarios, today])
+
+  const quandoCurto = (iso: string) => {
+    if (iso === today) return 'hoje'
+    if (iso === addDays(today, 1)) return 'amanhã'
+    const d = parseISO(iso)
+    return `${WD_ABBR[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+  }
+
   return (
     <>
       <header className="topbar">
-        <div className="topbar-title">Agenda</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div className="seg">{VIEWS.map((v) => <button key={v} className={`seg-item${v === view ? ' active' : ''}`} onClick={() => setView(v)}>{v}</button>)}</div>
-          <Button icon={<Icon name="plus" size={17} />} onClick={() => openNew()}>Novo agendamento</Button>
+        <div>
+          <h1 className="topbar-title">Agenda</h1>
+          <p className="topbar-sub" hidden={celular}>
+            {plural(ativos, 'atendimento', 'atendimentos')} {view === 'Diária' ? 'neste dia' : view === 'Mensal' ? 'neste mês' : 'nesta semana'}
+            {semConfirmar > 0 && ` · ${plural(semConfirmar, 'aguardando confirmação', 'aguardando confirmação')}`}
+          </p>
+        </div>
+        <div className="topbar-actions">
+          {!celular && (
+            <div className="seg-pill" role="group" aria-label="Visualização">
+              {VIEWS.map(([v, rot]) => <button key={v} aria-pressed={v === view} onClick={() => trocarVisao(v)}>{rot}</button>)}
+            </div>
+          )}
+          <button className="btn-cta" onClick={() => openNew(celular ? dayFocus : undefined)}><Icon name="plus" size={16} /> {celular ? 'Novo' : 'Novo agendamento'}</button>
         </div>
       </header>
 
-      <div style={{ height: 52, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', borderBottom: '1px solid #eff2f9', background: '#fafbff' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button className="icon-btn" style={{ width: 30, height: 30, borderRadius: 8, font: "700 15px 'Plus Jakarta Sans'" }} onClick={() => setWeekStart(addDays(weekStart, -7))}>‹</button>
-            <button className="icon-btn" style={{ width: 30, height: 30, borderRadius: 8, font: "700 15px 'Plus Jakarta Sans'" }} onClick={() => setWeekStart(addDays(weekStart, 7))}>›</button>
-          </div>
-          <span style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a' }}>{weekRangeLabel(weekStart)}</span>
-          <button className="chip" onClick={() => { setWeekStart(mondayOf(new Date())); setDayFocus(todayISO()) }} style={{ font: "700 11.5px 'Plus Jakarta Sans'", color: '#2f52e0', background: '#e9eeff', padding: '4px 10px', borderRadius: 20 }}>Hoje</button>
+      <div className="page-body">
+        {celular ? (
+          <AgendaCelular
+            dia={dayFocus}
+            onDia={setDayFocus}
+            eventos={events.filter((e) => e.date === dayFocus && e.status !== 'desmarcado').sort((a, b) => a.start - b.start)}
+            contagem={(iso) => events.filter((e) => e.date === iso && e.status !== 'desmarcado').length}
+            onOpen={setDetail}
+            onConfirmar={enviarConfirmacao}
+            onNovo={() => openNew(dayFocus)}
+          />
+        ) : (
+        <div className="cal-cols">
+          <section className="panel flush cal-main" aria-label="Calendário">
+            <div className="cal-toolbar">
+              <div className="cal-nav">
+                <button className="nav-arrow" onClick={() => navegar(-1)} aria-label={rotAnterior} title={rotAnterior}><Icon name="chevron" size={16} /></button>
+                <button className="nav-arrow" onClick={() => navegar(1)} aria-label={rotProximo} title={rotProximo}><span style={{ display: 'flex', transform: 'scaleX(-1)' }}><Icon name="chevron" size={16} /></span></button>
+                <button className="btn-soft" onClick={irParaHoje}>Hoje</button>
+                <span className="cal-label">{rotulo}</span>
+              </div>
+              <div className="seg-sm" role="group" aria-label="Filtrar por situação">
+                {FILTROS.map((f) => {
+                  const n = contagem(f.key)
+                  return (
+                    <button key={f.key} aria-pressed={filtro === f.key} onClick={() => setFiltro(f.key)}>
+                      {f.label}<span className={`n${f.alerta && n ? ' alert' : ''}`}>{n}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {view === 'Mensal' ? (
+              <MonthView anchor={monthAnchor} byDate={byDate} onPick={(iso) => { setDayFocus(iso); setWeekStart(mondayOf(parseISO(iso))); setView('Diária') }} />
+            ) : view === 'Diária' ? (
+              <DayView iso={dayFocus} cols={weekColumns(mondayOf(parseISO(dayFocus)))} events={byDate[dayFocus] ?? []} range={dayRange(horarios, dayFocus)} onPickDay={setDayFocus} onOpen={setDetail} onCreate={createAt} filtrado={filtro !== 'todos'} />
+            ) : (
+              <div className="week-scroll">
+                <div className="week">
+                  <div className="week-head">
+                    <div />
+                    {cols.map((c) => (
+                      <div key={c.iso} className={`week-day${c.today ? ' today' : ''}`}>
+                        <span className="d">{c.d}{c.today ? ' · HOJE' : ''}</span>
+                        <span className="n">{c.n}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+                    <div ref={gridRef} className="week-grid">
+                      <div className="time-col">
+                        {timeLabels.map((t) => <div key={t} className="time-label">{t}</div>)}
+                      </div>
+                      {cols.map((c) => {
+                        const dayEvents = byDate[c.iso] ?? []
+                        const lanes = layoutLanes(dayEvents)
+                        const range = dayRange(horarios, c.iso)
+                        return (
+                          <DayColumn key={c.iso} iso={c.iso} today={c.today} range={range} onCreate={createAt}>
+                            {dayEvents.map((e) => <DraggableEvent key={e.id} e={e} onOpen={setDetail} onResize={(id, dur) => updateAppointment(id, { dur })} lane={lanes[e.id]?.lane} lanes={lanes[e.id]?.lanes} colW={colW} range={range} />)}
+                          </DayColumn>
+                        )
+                      })}
+                    </div>
+                  </DndContext>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <aside className="cal-aside" aria-label="Pendências da agenda">
+            <section className="panel">
+              <div className="panel-head">
+                <h2 className="panel-title sm">A confirmar {aConfirmar.length > 0 && <span className="count-pill" style={{ background: 'var(--red-bg)', color: 'var(--danger-text)' }}>{aConfirmar.length}</span>}</h2>
+              </div>
+              <p className="panel-sub">Próximos 7 dias · mensagem pronta com data e hora.</p>
+              {aConfirmar.length === 0 ? (
+                <p className="empty-note">Todas as consultas da semana estão confirmadas.</p>
+              ) : (
+                <div className="list-rows">
+                  {aConfirmar.map((e) => {
+                    const p = findPatientByName(patients, e.child)
+                    return (
+                      <div key={e.id} className="list-row">
+                        <button className="q-text" style={{ flex: 1, border: 'none', background: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', font: 'inherit' }} onClick={() => setDetail(e)}>
+                          <span className="q-main">{e.child}</span>
+                          <span className="q-sub">{quandoCurto(e.date)} · {fmtHour(e.start)}{p && contactName(p, '') !== p.name ? ` · ${contactName(p, '')}` : ''}</span>
+                        </button>
+                        <button className="btn-line" onClick={() => enviarConfirmacao(e)}><Icon name="wa" size={14} /> WhatsApp</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="panel">
+              <h2 className="panel-title sm">{livres ? (livres.i === 1 ? 'Horários livres amanhã' : `Horários livres · ${quandoCurto(livres.iso)}`) : 'Horários livres'}</h2>
+              <p className="panel-sub">Para encaixe ou para remarcar retornos vencidos.</p>
+              {!livres ? (
+                <p className="empty-note">Nenhum dia de atendimento nos próximos 7 dias.</p>
+              ) : livres.slots.length === 0 ? (
+                <p className="empty-note">Dia cheio — nenhuma hora livre.</p>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                  {livres.slots.map((h) => (
+                    <button key={h} className="slot-btn" onClick={() => openNew(livres.iso, h)} aria-label={`Agendar ${quandoCurto(livres.iso)} às ${fmtHour(h)}`}>{fmtHour(h)}</button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="panel">
+              <h2 className="panel-title sm">Legenda</h2>
+              <div className="legend" style={{ marginTop: 12, gap: 9 }}>
+                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--surface)', border: '1.5px dashed #e7a3a3' }} />Sem confirmação (tracejado)</div>
+                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--primary-bg)', border: '1px solid var(--primary-border)' }} />Confirmado</div>
+                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--amber-bg)', border: '1px solid #f3d9a8' }} />Em atendimento</div>
+                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--green-bg)', border: '1px solid #bfe6cf' }} />Concluído</div>
+                <div className="legend-row"><span className="legend-swatch" style={{ background: 'var(--red-bg)', border: '1px solid #f6c9c9' }} />Faltou</div>
+                <div className="legend-row"><span className="legend-swatch" style={{ background: '#f4f3f8', border: '1px solid var(--border-strong)' }} />Desmarcado ou passado</div>
+              </div>
+            </section>
+          </aside>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-          {LEGEND.map((k) => (
-            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: STATUS[k].dot }} /><span style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#5b647a' }}>{STATUS[k].label}</span></div>
-          ))}
-        </div>
+        )}
       </div>
 
-      {view === 'Mensal' ? (
-        <MonthView anchor={weekStart} counts={byDate} onPick={(iso) => { setDayFocus(iso); setWeekStart(mondayOf(parseISO(iso))); setView('Diária') }} />
-      ) : view === 'Diária' ? (
-        <DayView iso={dayFocus} cols={weekColumns(mondayOf(parseISO(dayFocus)))} events={byDate[dayFocus] ?? []} range={dayRange(horarios, dayFocus)} onPickDay={setDayFocus} onOpen={setDetail} onCreate={createAt} />
-      ) : (
-        <div style={{ flex: 1, overflow: 'auto', padding: '0 28px 24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '60px repeat(6, 1fr)', position: 'sticky', top: 0, background: '#f5f8fd', zIndex: 2, paddingTop: 10 }}>
-            <div />
-            {cols.map((c) => (
-              <div key={c.iso} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '11px 0 10px', ...(c.today ? { background: '#e9eeff', borderRadius: '12px 12px 0 0' } : {}) }}>
-                <span style={{ font: "700 10.5px 'Plus Jakarta Sans'", letterSpacing: '.05em', color: c.today ? '#2f52e0' : '#8b93a7' }}>{c.d}</span>
-                <span style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', font: "800 14px 'Plus Jakarta Sans'", ...(c.today ? { background: '#3f6bf5', color: '#fff' } : { color: '#26324a' }) }}>{c.n}</span>
-              </div>
-            ))}
-          </div>
-
-          <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-            <div ref={gridRef} style={{ display: 'grid', gridTemplateColumns: '60px repeat(6, 1fr)', border: '1px solid #eceff6', borderRadius: '0 0 12px 12px', overflow: 'hidden', background: '#fff', backgroundImage: 'repeating-linear-gradient(to bottom,transparent 0,transparent 63px,#e7ecf4 63px,#e7ecf4 64px)' }}>
-              <div style={{ position: 'relative', background: '#fafbff', borderRight: '1px solid #eceff6', zIndex: 1 }}>
-                {timeLabels.map((t) => <div key={t} style={{ height: AGENDA_ROW, font: "600 10.5px 'JetBrains Mono'", color: '#8b93a7', textAlign: 'right', paddingRight: 10, transform: 'translateY(-7px)' }}>{t}</div>)}
-              </div>
-              {cols.map((c) => {
-                const dayEvents = byDate[c.iso] ?? []
-                const lanes = layoutLanes(dayEvents)
-                const range = dayRange(horarios, c.iso)
-                return (
-                  <DayColumn key={c.iso} iso={c.iso} today={c.today} range={range} onCreate={createAt}>
-                    {dayEvents.map((e) => <DraggableEvent key={e.id} e={e} onOpen={setDetail} onResize={(id, dur) => updateAppointment(id, { dur })} lane={lanes[e.id]?.lane} lanes={lanes[e.id]?.lanes} colW={colW} range={range} />)}
-                  </DayColumn>
-                )
-              })}
-            </div>
-          </DndContext>
-        </div>
-      )}
-
       {/* Novo agendamento */}
-      <Modal open={open} onClose={() => setOpen(false)} title="Novo agendamento" subtitle={longDate(form.date)} dirty={!!form.child.trim() || !!form.proc.trim()}
+      <Modal open={open} onClose={() => setOpen(false)} title="Novo agendamento" subtitle={form.date ? longDate(form.date) : 'Escolha a data'} dirty={!!form.child.trim() || !!form.proc.trim()}
         footer={<><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button loading={saving} onClick={submit}>Agendar</Button></>}>
         <Field label="Perfil do atendimento"><Select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as ApptKind })}><option value="ped">Pediátrico</option><option value="est">Estético</option><option value="adt">Adulto</option></Select></Field>
         <Field label="Paciente">
@@ -469,7 +662,7 @@ export default function Agenda() {
         </FieldRow>
         <FieldRow>
           <Field label="Data"><DateField value={form.date} onChange={(iso) => setForm({ ...form, date: iso })} /></Field>
-          <Field label="Horário"><Select value={form.hour} onChange={(e) => setForm({ ...form, hour: e.target.value })}><HourOptions range={dayRange(horarios, form.date)} /></Select></Field>
+          <Field label="Horário"><Select value={form.hour} onChange={(e) => setForm({ ...form, hour: e.target.value })}><HourOptions range={form.date ? dayRange(horarios, form.date) : undefined} /></Select></Field>
         </FieldRow>
         <FieldRow>
           <Field label="Duração"><Select value={form.dur} onChange={(e) => setForm({ ...form, dur: e.target.value })}><option value="0.5">30 min</option><option value="1">1 hora</option><option value="1.5">1h30</option><option value="2">2 horas</option></Select></Field>
@@ -482,26 +675,17 @@ export default function Agenda() {
         footer={detail ? (<><Button variant="ghost" className="btn-danger" onClick={() => setConfirmDel(true)}>Cancelar consulta</Button><Button onClick={() => setDetail(null)}>Fechar</Button></>) : undefined}>
         {detail && (
           <>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} role="group" aria-label="Situação do atendimento">
               {LEGEND.map((s) => (
-                <button key={s} className="chip" onClick={() => setStatus(s)} style={{ padding: '6px 11px', borderRadius: 20, font: "700 11px 'Plus Jakarta Sans'", border: `1px solid ${detail.status === s ? STATUS[s].border : '#eceff6'}`, background: detail.status === s ? STATUS[s].bg : '#fff', color: detail.status === s ? STATUS[s].fg : '#8b93a7' }}>{STATUS[s].label}</button>
+                <button key={s} aria-pressed={detail.status === s} className={`chip ev-${s}`} onClick={() => setStatus(s)}
+                  style={{ padding: '6px 11px', borderRadius: 20, font: "600 11.5px var(--font)", border: `1px solid ${detail.status === s ? 'var(--ev-border)' : 'var(--line)'}`, background: detail.status === s ? 'var(--ev-bg)' : '#fff', color: detail.status === s ? 'var(--ev-fg)' : 'var(--muted)', borderStyle: 'solid' }}>
+                  {s === 'agendado' ? 'Sem confirmação' : STATUS[s].label}
+                </button>
               ))}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <WaButton
-                onClick={() => {
-                  const p = findPatientByName(patients, detail.child)
-                  const quem = contactName(p, detail.child)
-                  const consulta = (detail.kind ?? 'ped') === 'ped' && p?.resp && p.resp !== '—' ? `a consulta de ${detail.child}` : 'sua consulta'
-                  const msg = `Oi, ${quem}! 😊 Passando para confirmar ${consulta} com a Dra. Gabriela Lorenzi em ${brDate(detail.date)} às ${fmtHour(detail.start)} (${detail.proc || 'consulta'}). Responda SIM para confirmar ou REMARCAR se precisar mudar. 🦷`
-                  const link = waLink(contactPhone(p), msg)
-                  if (!link) return toast(`Sem telefone cadastrado para ${detail.child}. Complete o cadastro do paciente.`, 'error')
-                  window.open(link, '_blank')
-                }}
-              >
-                Enviar confirmação por WhatsApp
-              </WaButton>
-              <span style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7' }}>ao responder SIM, marque como Confirmado</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <WaButton onClick={() => enviarConfirmacao(detail)}>Enviar confirmação por WhatsApp</WaButton>
+              <span style={{ font: "400 11.5px var(--font)", color: 'var(--muted)' }}>ao responder SIM, marque como Confirmado</span>
             </div>
             <Field label="Perfil do atendimento"><Select value={detail.kind ?? 'ped'} onChange={(e) => patchDetail({ kind: e.target.value as ApptKind })}><option value="ped">Pediátrico</option><option value="est">Estético</option><option value="adt">Adulto</option></Select></Field>
             <Field label="Paciente">
@@ -514,7 +698,8 @@ export default function Agenda() {
               </Field>
             </FieldRow>
             <FieldRow>
-              <Field label="Data"><DateField value={detail.date} onChange={(iso) => { moveAppointment(detail.id, iso, detail.start); setDetail({ ...detail, date: iso }) }} /></Field>
+              {/* apagar a data não move o atendimento para uma data vazia (ele sumiria da agenda) */}
+              <Field label="Data"><DateField value={detail.date} onChange={(iso) => { if (!iso) return; moveAppointment(detail.id, iso, detail.start); setDetail({ ...detail, date: iso }) }} /></Field>
               <Field label="Horário"><Select value={detail.start} onChange={(e) => patchDetail({ start: Number(e.target.value) })}><HourOptions range={dayRange(horarios, detail.date)} /></Select></Field>
             </FieldRow>
             <Field label="Duração"><Select value={String(detail.dur)} onChange={(e) => patchDetail({ dur: Number(e.target.value) })}><option value="0.5">30 min</option><option value="1">1 hora</option><option value="1.5">1h30</option><option value="2">2 horas</option></Select></Field>
@@ -529,24 +714,26 @@ export default function Agenda() {
 }
 
 /* ---------- Diária ---------- */
-function DayView({ iso, cols, events, range, onPickDay, onOpen, onCreate }: { iso: string; cols: { iso: string; d: string; n: string; today: boolean }[]; events: EventItem[]; range?: Range; onPickDay: (iso: string) => void; onOpen: (e: EventItem) => void; onCreate: (iso: string, hour: number) => void }) {
+function DayView({ iso, cols, events, range, onPickDay, onOpen, onCreate, filtrado }: { iso: string; cols: { iso: string; d: string; n: string; today: boolean }[]; events: EventItem[]; range?: Range; onPickDay: (iso: string) => void; onOpen: (e: EventItem) => void; onCreate: (iso: string, hour: number) => void; filtrado: boolean }) {
   const [ghost, setGhost] = useState<number | null>(null)
   const noFundo = (e: React.MouseEvent<HTMLElement>) => e.target === e.currentTarget
   const dentroDoExpediente = (h: number) => !!range && h >= range.start && h < range.end
   const abriuNoFundo = useRef(false)
+  const lanes = layoutLanes(events)
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '16px 28px 24px' }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        {cols.map((c) => <button key={c.iso} className={`seg-item${c.iso === iso ? ' active' : ''}`} onClick={() => onPickDay(c.iso)} style={{ borderRadius: 10, border: '1px solid #eceff6' }}>{c.d} {c.n}</button>)}
+    <div>
+      <div className="day-pills" role="group" aria-label="Dia da semana">
+        {cols.map((c) => <button key={c.iso} aria-pressed={c.iso === iso} onClick={() => onPickDay(c.iso)}>{c.d.toLowerCase()} {c.n}{c.today ? ' · hoje' : ''}</button>)}
       </div>
       {events.length === 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>
-          <Icon name="cal" size={15} /> Nenhum atendimento neste dia — clique em um horário para agendar.
-        </div>
+        <p className="empty-note" style={{ padding: '0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="cal" size={15} /> {filtrado ? 'Nada neste filtro neste dia.' : 'Nenhum atendimento neste dia — clique em um horário para agendar.'}
+        </p>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', border: '1px solid #eceff6', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
-        <div style={{ position: 'relative', background: '#fafbff', borderRight: '1px solid #eceff6' }}>{timeLabels.map((t) => <div key={t} style={{ height: AGENDA_ROW, font: "600 10.5px 'JetBrains Mono'", color: '#8b93a7', textAlign: 'right', paddingRight: 10, transform: 'translateY(-7px)' }}>{t}</div>)}</div>
+      <div className="day-board">
+        <div className="time-col">{timeLabels.map((t) => <div key={t} className="time-label">{t}</div>)}</div>
         <div
+          className={`day-col${range ? ' open' : ''}`}
           onMouseMove={(e) => {
             if (!range || !noFundo(e)) return setGhost(null)
             const h = slotAtPointer(e)
@@ -555,22 +742,16 @@ function DayView({ iso, cols, events, range, onPickDay, onOpen, onCreate }: { is
           onMouseLeave={() => setGhost(null)}
           onMouseDown={(e) => { abriuNoFundo.current = noFundo(e) }}
           onClick={(e) => { if (!abriuNoFundo.current || !noFundo(e)) return; onCreate(iso, slotAtPointer(e)) }}
-          style={{ position: 'relative', cursor: range ? 'copy' : 'default', backgroundImage: 'repeating-linear-gradient(to bottom,transparent 0,transparent 63px,#eff2f9 63px,#eff2f9 64px)' }}
         >
-          {!range && <div style={{ position: 'absolute', inset: 0, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
-          {range && range.start > AGENDA_START && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: (range.start - AGENDA_START) * AGENDA_ROW, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
-          {range && range.end < 19 && <div style={{ position: 'absolute', left: 0, right: 0, top: (range.end - AGENDA_START) * AGENDA_ROW, bottom: 0, background: 'rgba(140,150,170,0.12)', pointerEvents: 'none' }} />}
+          <OffHours range={range} />
           {ghost !== null && <NewSlotGhost hour={ghost} />}
-          {(() => {
-            const lanes = layoutLanes(events)
-            return events.map((e) => {
-              const l = lanes[e.id] ?? { lane: 0, lanes: 1 }
-              const w = 100 / l.lanes
-              return (
-                <div key={e.id} style={{ position: 'absolute', left: `calc(${l.lane * w}% + 8px)`, width: `calc(${w}% - 16px)`, top: (e.start - AGENDA_START) * AGENDA_ROW, height: e.dur * AGENDA_ROW - 6 }}><EventCard e={e} onClick={() => onOpen(e)} /></div>
-              )
-            })
-          })()}
+          {events.map((e) => {
+            const l = lanes[e.id] ?? { lane: 0, lanes: 1 }
+            const w = 100 / l.lanes
+            return (
+              <div key={e.id} style={{ position: 'absolute', left: `calc(${l.lane * w}% + 8px)`, width: `calc(${w}% - 16px)`, top: (e.start - AGENDA_START) * AGENDA_ROW + 1, height: e.dur * AGENDA_ROW - 6 }}><EventCard e={e} onClick={() => onOpen(e)} /></div>
+            )
+          })}
         </div>
       </div>
     </div>
@@ -578,7 +759,7 @@ function DayView({ iso, cols, events, range, onPickDay, onOpen, onCreate }: { is
 }
 
 /* ---------- Mensal ---------- */
-function MonthView({ anchor, counts, onPick }: { anchor: string; counts: Record<string, EventItem[]>; onPick: (iso: string) => void }) {
+function MonthView({ anchor, byDate, onPick }: { anchor: string; byDate: Record<string, EventItem[]>; onPick: (iso: string) => void }) {
   const ad = parseISO(anchor)
   const first = new Date(ad.getFullYear(), ad.getMonth(), 1)
   const startPad = (first.getDay() + 6) % 7 // segunda = 0
@@ -588,19 +769,83 @@ function MonthView({ anchor, counts, onPick }: { anchor: string; counts: Record<
   for (let d = 1; d <= daysInMonth; d++) cells.push(isoDate(new Date(ad.getFullYear(), ad.getMonth(), d)))
   const today = todayISO()
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '18px 28px 24px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
-        {['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'].map((d) => <div key={d} style={{ textAlign: 'center', font: "700 10px 'JetBrains Mono'", color: '#8b93a7', padding: '4px 0' }}>{d}</div>)}
-        {cells.map((iso, i) => {
-          const c = iso ? (counts[iso]?.length ?? 0) : 0
-          return (
-            <button key={i} className="card card-hover" disabled={!iso} onClick={() => iso && onPick(iso)} style={{ minHeight: 78, padding: 8, textAlign: 'left', border: '1px solid #eceff6', background: iso ? '#fff' : 'transparent', cursor: iso ? 'pointer' : 'default', opacity: iso ? 1 : 0.4 }}>
-              {iso && <div style={{ font: "700 12px 'Plus Jakarta Sans'", color: iso === today ? '#3f6bf5' : '#26324a' }}>{parseISO(iso).getDate()}</div>}
-              {c > 0 && <div style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 5, font: "700 10px 'Plus Jakarta Sans'", color: '#2f52e0', background: '#e9eeff', padding: '2px 7px', borderRadius: 12 }}>{c} atend.</div>}
-            </button>
-          )
-        })}
+    <div className="month-grid">
+      {['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'].map((d) => <div key={d} className="month-wd">{d}</div>)}
+      {cells.map((iso, i) => {
+        if (!iso) return <div key={i} className="month-cell empty" aria-hidden="true" />
+        // desmarcados não contam como atendimento do dia
+        const doDia = (byDate[iso] ?? []).filter((e) => e.status !== 'desmarcado')
+        const pendentes = doDia.filter((e) => e.status === 'agendado' && e.date >= today).length
+        return (
+          <button key={i} className={`month-cell${iso === today ? ' today' : ''}`} onClick={() => onPick(iso)}
+            aria-label={`${parseISO(iso).getDate()}: ${doDia.length} atendimento${doDia.length === 1 ? '' : 's'}${pendentes ? `, ${pendentes} sem confirmação` : ''}`}>
+            <span className="n">{parseISO(iso).getDate()}</span>
+            {doDia.length > 0 && <span className="month-count">{doDia.length} atend.</span>}
+            {pendentes > 0 && <span className="month-count alert">{pendentes} a confirmar</span>}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Agenda no celular: faixa com os dias da semana e os atendimentos do dia em cartões. */
+function AgendaCelular({ dia, onDia, eventos, contagem, onOpen, onConfirmar, onNovo }: {
+  dia: string
+  onDia: (iso: string) => void
+  eventos: EventItem[]
+  contagem: (iso: string) => number
+  onOpen: (e: EventItem) => void
+  onConfirmar: (e: EventItem) => void
+  onNovo: () => void
+}) {
+  const hoje = todayISO()
+  const segunda = mondayOf(parseISO(dia))
+  const dias = weekColumns(segunda)
+  return (
+    <div className="ag-cel">
+      <div className="ag-strip-row">
+        <button className="nav-arrow" aria-label="Semana anterior" onClick={() => onDia(addDays(segunda, -7))}><Icon name="chevron" size={16} /></button>
+        <div className="ag-strip" role="group" aria-label="Escolher dia">
+          {dias.map((c) => {
+            const n = contagem(c.iso)
+            return (
+              <button key={c.iso} aria-pressed={c.iso === dia} aria-label={`${longDate(c.iso)}${n ? `, ${n} atendimentos` : ''}`} onClick={() => onDia(c.iso)}>
+                <span>{c.today ? 'hoje' : c.d.toLowerCase()}</span>
+                <b>{c.n}</b>
+                {n > 0 && <i aria-hidden="true" />}
+              </button>
+            )
+          })}
+        </div>
+        <button className="nav-arrow" aria-label="Próxima semana" onClick={() => onDia(addDays(segunda, 7))}><span style={{ display: 'flex', transform: 'scaleX(-1)' }}><Icon name="chevron" size={16} /></span></button>
       </div>
+      <p className="ag-dia">{longDate(dia)} · {eventos.length} {eventos.length === 1 ? 'atendimento' : 'atendimentos'}</p>
+
+      {eventos.length === 0 ? (
+        <div className="panel" style={{ textAlign: 'center' }}>
+          <p className="qempty" style={{ padding: '6px 0 12px' }}>Nenhum atendimento neste dia.</p>
+          <button className="btn-cta sm" onClick={onNovo}><Icon name="plus" size={15} /> Agendar</button>
+        </div>
+      ) : eventos.map((e) => {
+        const semConfirmacao = e.status === 'agendado' && e.date >= hoje
+        const st = STATUS[e.status]
+        return (
+          <article key={e.id} className={`ag-card${e.status === 'em_atendimento' ? ' now' : ''}`}>
+            <button className="ag-card-main" onClick={() => onOpen(e)}>
+              <span className="ag-time">{fmtHour(e.start)}</span>
+              <span className="ag-info">
+                <b>{e.child}</b>
+                <span>{[e.proc || 'Atendimento', e.age && e.age !== '—' ? e.age : ''].filter(Boolean).join(' · ')}</span>
+              </span>
+            </button>
+            <div className="ag-card-foot">
+              <span className="st-chip" style={semConfirmacao ? { background: 'var(--red-bg)', color: 'var(--danger-text)' } : { background: st.bg, color: st.fg }}>{situacao(e)}</span>
+              {semConfirmacao && <button className="btn-line" style={{ height: 34 }} onClick={() => onConfirmar(e)}><Icon name="wa" size={15} /> Confirmar</button>}
+            </div>
+          </article>
+        )
+      })}
     </div>
   )
 }

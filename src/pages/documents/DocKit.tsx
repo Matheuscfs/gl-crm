@@ -42,7 +42,7 @@ export function DocSheet({ title, children }: { title: string; children: ReactNo
       <div className="doc-watermark">
         <div style={{ textAlign: 'center' }}>
           <div style={{ font: 'italic 700 160px Georgia, serif', color: '#c2478a' }}>GL</div>
-          <div style={{ font: "700 22px 'Plus Jakarta Sans'", letterSpacing: '0.3em', color: '#c2478a' }}>CIRURGIÃ DENTISTA</div>
+          <div style={{ font: "700 22px var(--font)", letterSpacing: '0.3em', color: '#c2478a' }}>CIRURGIÃ DENTISTA</div>
         </div>
       </div>
       <DocHeader />

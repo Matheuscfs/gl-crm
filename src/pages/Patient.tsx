@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useParams, Navigate, Link } from 'react-router-dom'
-import PatientHeader, { Breadcrumb } from './patient/PatientHeader'
+import PatientHeader from './patient/PatientHeader'
 import { EmptyState } from '../components/States'
 import { DEMO_DATA } from '../lib/demo'
 import Odontograma from './patient/Odontograma'
@@ -36,7 +36,7 @@ export default function Patient() {
   if (!patient) {
     return (
       <>
-        <Breadcrumb name={name || 'Paciente'} />
+        <header className="topbar"><h1 className="topbar-title">{name || 'Paciente'}</h1></header>
         <EmptyState
           icon="users"
           title="Paciente não encontrado"
@@ -85,12 +85,11 @@ export default function Patient() {
   }
 
   return (
-    <>
-      <Breadcrumb name={patient.name} />
+    <div className="ficha-page">
       <PatientHeader activeTab={tab} patient={patient} tabs={tabs} patientId={patientId} />
-      <div key={tab} className="fade-in" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div key={tab} className="ficha-body fade-in">
         {content}
       </div>
-    </>
+    </div>
   )
 }

@@ -65,17 +65,14 @@ export function StatCard({
   borderColor?: string
 }) {
   return (
-    <div className="card card-hover" style={{ padding: '17px 18px 15px', borderColor }}>
-      <div style={{ font: "600 12.5px 'Plus Jakarta Sans'", color: '#8a9699' }}>{label}</div>
-      <div
-        className="tnum"
-        style={{ font: "800 26px 'Plus Jakarta Sans'", color: valueColor ?? '#1a2426', margin: '8px 0 6px' }}
-      >
+    <div className="card card-hover kpi-card" style={{ borderColor }}>
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value tnum" style={{ color: valueColor }}>
         <CountUp value={value} />
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: tone }} />
-        <span style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: valueColor ? '#a81e1e' : '#5b6a6d' }}>{sub}</span>
+      <div className="kpi-sub" style={valueColor ? { color: 'var(--danger-text)' } : undefined}>
+        <span className="kpi-dot" style={{ background: tone }} />
+        <span>{sub}</span>
       </div>
     </div>
   )
@@ -102,7 +99,7 @@ export function Pill({
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return <div style={{ font: "800 15px 'Plus Jakarta Sans'", color: '#1a2426', marginBottom: 12 }}>{children}</div>
+  return <div style={{ font: "800 15px var(--font)", color: 'var(--ink)', marginBottom: 12 }}>{children}</div>
 }
 
 export function WaButton({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
@@ -114,9 +111,9 @@ export function WaButton({ children, onClick }: { children: ReactNode; onClick?:
         display: 'flex',
         alignItems: 'center',
         gap: 5,
-        font: "700 11px 'Plus Jakarta Sans'",
-        color: '#2f52e0',
-        background: '#e9eeff',
+        font: "700 11px var(--font)",
+        color: 'var(--primary-dark)',
+        background: 'var(--primary-bg)',
         padding: '5px 10px',
         borderRadius: 9,
       }}
