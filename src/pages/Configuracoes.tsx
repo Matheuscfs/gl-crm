@@ -99,20 +99,20 @@ export default function Configuracoes() {
         <div className="topbar-title">Configurações</div>
       </header>
 
-      <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '210px 1fr' }}>
-        <div style={{ borderRight: '1px solid #eff2f9', padding: '18px 12px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Seções das configurações">
           {SECTIONS.map((s) => (
-            <button key={s} onClick={() => setSection(s)}
-              style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, border: 'none', font: `${s === section ? 700 : 600} 13px 'Plus Jakarta Sans'`, color: s === section ? '#2f52e0' : '#5b647a', background: s === section ? '#e9eeff' : 'transparent', cursor: 'pointer' }}>
+            <button key={s} onClick={() => setSection(s)} aria-current={s === section ? 'page' : undefined}
+              style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, border: 'none', font: `${s === section ? 700 : 600} 13px var(--font)`, color: s === section ? 'var(--primary-dark)' : 'var(--slate)', background: s === section ? 'var(--primary-bg)' : 'transparent', cursor: 'pointer' }}>
               {s}
             </button>
           ))}
-        </div>
+        </nav>
 
-        <div style={{ overflow: 'auto', padding: '22px 24px' }} className="fade-in" key={section}>
+        <div className="settings-content fade-in" key={section}>
           {section === 'Perfil da clínica' && (
             <>
-              <div style={{ font: "800 16px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 14 }}>Perfil da clínica</div>
+              <div style={{ font: "800 16px var(--font)", color: 'var(--ink)', marginBottom: 14 }}>Perfil da clínica</div>
               <div className="card" style={{ padding: '20px 22px', maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <Field label="Nome"><TextInput value={clinic.name} onChange={(e) => setClinic({ ...clinic, name: e.target.value })} /></Field>
                 <FieldRow>
@@ -121,13 +121,13 @@ export default function Configuracoes() {
                 </FieldRow>
                 <Field label="CPF da profissional">
                   <TextInput value={clinic.cpf} onChange={(e) => setClinic({ ...clinic, cpf: maskCpf(e.target.value) })} placeholder="000.000.000-00" />
-                  <span style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7', marginTop: 4 }}>Sai no rodapé do recibo e identifica a titular no Carnê-Leão.</span>
+                  <span style={{ font: "600 11px var(--font)", color: 'var(--muted)', marginTop: 4 }}>Sai no rodapé do recibo e identifica a titular no Carnê-Leão.</span>
                 </Field>
                 <Field label="Endereço"><TextInput value={clinic.address} onChange={(e) => setClinic({ ...clinic, address: e.target.value })} /></Field>
                 <Field label="Telefone"><TextInput value={clinic.phone} onChange={(e) => setClinic({ ...clinic, phone: e.target.value })} /></Field>
                 <Field label="Chave PIX">
                   <TextInput value={clinic.pix_key} onChange={(e) => setClinic({ ...clinic, pix_key: e.target.value })} placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória" />
-                  <span style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7', marginTop: 4 }}>Usada na cobrança por WhatsApp e no PIX copia e cola do Financeiro.</span>
+                  <span style={{ font: "600 11px var(--font)", color: 'var(--muted)', marginTop: 4 }}>Usada na cobrança por WhatsApp e no PIX copia e cola do Financeiro.</span>
                 </Field>
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}><Button onClick={saveClinic}>Salvar alterações</Button></div>
               </div>
@@ -136,11 +136,11 @@ export default function Configuracoes() {
 
           {section === 'Horários de atendimento' && (
             <>
-              <div style={{ font: "800 16px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 14 }}>Horários de atendimento</div>
+              <div style={{ font: "800 16px var(--font)", color: 'var(--ink)', marginBottom: 14 }}>Horários de atendimento</div>
               <div className="card" style={{ padding: '6px 16px', maxWidth: 460 }}>
                 {hours.map((d, i) => (
-                  <div key={d.day} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f2f5fb' }}>
-                    <span style={{ font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>{d.day}</span>
+                  <div key={d.day} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid var(--line)' }}>
+                    <span style={{ font: "600 12.5px var(--font)", color: 'var(--slate)' }}>{d.day}</span>
                     <input className="field-input" style={{ width: 170, height: 32, textAlign: 'right' }} value={d.hours} onChange={(e) => setHours((h) => h.map((x, j) => (j === i ? { ...x, hours: e.target.value } : x)))} />
                   </div>
                 ))}
@@ -151,15 +151,15 @@ export default function Configuracoes() {
 
           {section === 'Modelos de mensagem' && (
             <>
-              <div style={{ font: "800 16px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 14 }}>Modelos de mensagem</div>
+              <div style={{ font: "800 16px var(--font)", color: 'var(--ink)', marginBottom: 14 }}>Modelos de mensagem</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 620 }}>
                 {templates.map((t) => (
                   <div key={t.id} className="card card-hover" style={{ padding: '16px 18px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <span style={{ font: "800 13.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{t.title}</span>
+                      <span style={{ font: "800 13.5px var(--font)", color: 'var(--ink)' }}>{t.title}</span>
                       <Button size="sm" variant="teal-soft" onClick={() => setEditTpl(t)}>Editar</Button>
                     </div>
-                    <div style={{ font: "500 12.5px/1.6 'Plus Jakarta Sans'", color: '#5b647a' }}>{t.body}</div>
+                    <div style={{ font: "500 12.5px/1.6 var(--font)", color: 'var(--slate)' }}>{t.body}</div>
                   </div>
                 ))}
               </div>
@@ -169,7 +169,7 @@ export default function Configuracoes() {
           {section === 'Usuários & acesso' && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div style={{ font: "800 16px 'Plus Jakarta Sans'", color: '#26324a' }}>Usuários & acesso</div>
+                <div style={{ font: "800 16px var(--font)", color: 'var(--ink)' }}>Usuários & acesso</div>
                 <Button size="sm" icon={<Icon name="plus" size={16} />} onClick={() => { setInviteForm({ name: '', role: 'Recepção' }); setInvite(true) }}>Convidar</Button>
               </div>
               <div className="card" style={{ overflow: 'hidden', maxWidth: 620 }}>
@@ -178,8 +178,8 @@ export default function Configuracoes() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
                       <div className="avatar" style={{ width: 36, height: 36 }}>{u.initials}</div>
                       <div>
-                        <div style={{ font: "700 13px 'Plus Jakarta Sans'", color: '#26324a' }}>{u.name}</div>
-                        <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7' }}>{u.role}</div>
+                        <div style={{ font: "700 13px var(--font)", color: 'var(--ink)' }}>{u.name}</div>
+                        <div style={{ font: "600 11.5px var(--font)", color: 'var(--muted)' }}>{u.role}</div>
                       </div>
                     </div>
                     <Menu items={[{ label: 'Editar permissões', onClick: () => toast('Permissões — em breve.', 'info') }, { label: 'Remover acesso', danger: true, onClick: () => removeUser(u) }]} />
@@ -191,13 +191,13 @@ export default function Configuracoes() {
 
           {section === 'Integrações' && (
             <>
-              <div style={{ font: "800 16px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 14 }}>Integrações</div>
+              <div style={{ font: "800 16px var(--font)", color: 'var(--ink)', marginBottom: 14 }}>Integrações</div>
               <div className="card" style={{ padding: '18px 20px', maxWidth: 560 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ width: 46, height: 46, borderRadius: 12, background: '#e9eeff', color: '#3f6bf5', display: 'flex', alignItems: 'center', justifyContent: 'center', font: "800 18px 'Plus Jakarta Sans'" }}>G</div>
+                  <div style={{ width: 46, height: 46, borderRadius: 12, background: 'var(--primary-bg)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: "800 18px var(--font)" }}>G</div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a' }}>Google Calendar & Drive</div>
-                    <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>
+                    <div style={{ font: "800 14px var(--font)", color: 'var(--ink)' }}>Google Calendar & Drive</div>
+                    <div style={{ font: "600 12px var(--font)", color: 'var(--muted)' }}>
                       {!google.configured ? 'Configure VITE_GOOGLE_CLIENT_ID no .env' : google.connected ? 'Conectado · agendamentos vão ao Calendar e arquivos ao Drive' : 'Envie agendamentos ao Calendar e arquivos ao Drive'}
                     </div>
                   </div>
@@ -207,7 +207,7 @@ export default function Configuracoes() {
                     <Button loading={google.connecting} disabled={!google.configured} onClick={async () => { const ok = await google.connect(); toast(ok ? 'Google conectado.' : 'Não foi possível conectar.', ok ? 'success' : 'error') }}>Conectar Google</Button>
                   )}
                 </div>
-                <div style={{ marginTop: 14, padding: '11px 13px', background: '#f5f8ff', borderRadius: 10, font: "600 11.5px/1.6 'Plus Jakarta Sans'", color: '#5b647a' }}>
+                <div style={{ marginTop: 14, padding: '11px 13px', background: 'var(--bg-soft)', borderRadius: 10, font: "600 11.5px/1.6 var(--font)", color: 'var(--slate)' }}>
                   Pré-requisito: crie um <b>OAuth Client ID</b> (Web) no Google Cloud, habilite as APIs <b>Calendar</b> e <b>Drive</b>, adicione a origem do app em "Authorized JavaScript origins" e coloque o ID em <b>VITE_GOOGLE_CLIENT_ID</b>.
                 </div>
               </div>

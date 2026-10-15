@@ -33,7 +33,7 @@ export function ConfirmDialog({
         </>
       }
     >
-      <div style={{ font: "500 13px/1.6 'Plus Jakarta Sans'", color: '#5b647a' }}>{message}</div>
+      <div style={{ font: "500 13px/1.6 var(--font)", color: 'var(--slate)' }}>{message}</div>
     </Modal>
   )
 }

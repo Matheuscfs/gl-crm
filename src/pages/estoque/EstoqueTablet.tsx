@@ -47,7 +47,7 @@ export default function EstoqueTablet({
           <div className="hl-title">Estoque</div>
           <div className="hl-sub">
             {total} {total === 1 ? 'item' : 'itens'}
-            {listaCompras.length > 0 && <> · <span style={{ color: '#9a5a06' }}>{listaCompras.length} a repor</span></>}
+            {listaCompras.length > 0 && <> · <span style={{ color: 'var(--amber-dark)' }}>{listaCompras.length} a repor</span></>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flex: 'none' }}>

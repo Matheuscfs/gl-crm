@@ -23,24 +23,24 @@ export interface AreaInfo {
 
 export const AREAS: AreaInfo[] = [
   { key: 'Biossegurança', label: 'Biossegurança e materiais gerais', emoji: '🧤', color: '#0f9d8f', bg: '#e2f6f3' },
-  { key: 'Anestesia', label: 'Anestesia', emoji: '💉', color: '#e0344f', bg: '#fdeaed' },
+  { key: 'Anestesia', label: 'Anestesia', emoji: '💉', color: '#e0344f', bg: 'var(--red-bg)' },
   { key: 'Profilaxia', label: 'Profilaxia e prevenção', emoji: '🪥', color: '#0091b3', bg: '#e2f4f9' },
-  { key: 'Odontopediatria', label: 'Odontopediatria', emoji: '👶', color: '#d97706', bg: '#fdf1e2' },
-  { key: 'Dentística', label: 'Dentística / Restauradora', emoji: '🦷', color: '#4f52d6', bg: '#ecedfc' },
-  { key: 'Endodontia', label: 'Endodontia', emoji: '🧪', color: '#9333ea', bg: '#f4eafd' },
-  { key: 'Isolamento', label: 'Isolamento absoluto', emoji: '🛡️', color: '#2563eb', bg: '#e7eefe' },
-  { key: 'Radiologia', label: 'Radiologia', emoji: '🩻', color: '#546376', bg: '#eef1f5' },
-  { key: 'Clareamento', label: 'Clareamento', emoji: '✨', color: '#b8860b', bg: '#fbf3dd' },
-  { key: 'Laboratório', label: 'Prótese / Laboratório', emoji: '🧰', color: '#c2478a', bg: '#fdeaf3' },
+  { key: 'Odontopediatria', label: 'Odontopediatria', emoji: '👶', color: '#d97706', bg: 'var(--amber-bg)' },
+  { key: 'Dentística', label: 'Dentística / Restauradora', emoji: '🦷', color: '#4f52d6', bg: 'var(--primary-bg)' },
+  { key: 'Endodontia', label: 'Endodontia', emoji: '🧪', color: '#9333ea', bg: 'var(--primary-bg)' },
+  { key: 'Isolamento', label: 'Isolamento absoluto', emoji: '🛡️', color: '#2563eb', bg: 'var(--primary-bg)' },
+  { key: 'Radiologia', label: 'Radiologia', emoji: '🩻', color: '#546376', bg: 'var(--chip-bg)' },
+  { key: 'Clareamento', label: 'Clareamento', emoji: '✨', color: '#b8860b', bg: 'var(--amber-bg)' },
+  { key: 'Laboratório', label: 'Prótese / Laboratório', emoji: '🧰', color: 'var(--brand-pink)', bg: 'var(--brand-pink-bg)' },
   // áreas sem contagem física ainda — existem no catálogo de compras (ver catalog.ts)
   { key: 'Cirurgia', label: 'Cirurgia', emoji: '🩹', color: '#c2410c', bg: '#fdece3' },
   { key: 'Instrumental', label: 'Instrumental rotatório', emoji: '⚙️', color: '#4d7c0f', bg: '#eef5e3' },
-  { key: 'Assepsia', label: 'Assepsia e limpeza', emoji: '🧴', color: '#059669', bg: '#e6f6ef' },
-  { key: 'Harmonização', label: 'Harmonização orofacial', emoji: '💎', color: '#db2777', bg: '#fdeaf3' },
+  { key: 'Assepsia', label: 'Assepsia e limpeza', emoji: '🧴', color: '#059669', bg: 'var(--green-bg)' },
+  { key: 'Harmonização', label: 'Harmonização orofacial', emoji: '💎', color: '#db2777', bg: 'var(--brand-pink-bg)' },
 ]
 
 /** Cor neutra para categorias fora da lista (materiais criados à mão). */
-export const AREA_PADRAO: Omit<AreaInfo, 'key' | 'label'> = { emoji: '📦', color: '#5b647a', bg: '#eef1f7' }
+export const AREA_PADRAO: Omit<AreaInfo, 'key' | 'label'> = { emoji: '📦', color: 'var(--slate)', bg: 'var(--chip-bg)' }
 
 export const areaInfo = (cat: string): AreaInfo | undefined => AREAS.find((a) => a.key === cat)
 

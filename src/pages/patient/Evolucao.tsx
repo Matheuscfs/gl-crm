@@ -65,36 +65,40 @@ export default function Evolucao() {
   }
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px 28px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, maxWidth: 840 }}>
-        <div style={{ font: "800 15px 'Plus Jakarta Sans'", color: '#26324a' }}>
-          Ficha de evolução <span style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>({sorted.length})</span>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Button variant="outline" icon={<Icon name="print" size={16} />} onClick={() => setPrinting(true)}>Imprimir ficha</Button>
-          <Button icon={<Icon name="plus" size={17} />} onClick={() => { setForm({ date: todayISO(), proc: '', note: '' }); setOpen(true) }}>Nova evolução</Button>
-        </div>
-      </div>
-
-      {sorted.length === 0 ? (
-        <div className="card" style={{ maxWidth: 840 }}>
-          <EmptyState icon="clipboard" title="Nenhuma evolução registrada" desc="Registre a evolução clínica de cada sessão — conduta, intercorrências e orientações."
-            action={<Button onClick={() => setOpen(true)}>Nova evolução</Button>} />
-        </div>
-      ) : (
-        sorted.map((e) => (
-          <div key={e.id} className="card card-hover" style={{ maxWidth: 840, padding: '14px 18px', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-              <span className="tnum" style={{ font: "700 12.5px 'JetBrains Mono'", color: '#2f52e0' }}>{e.date}</span>
-              {e.proc && <span style={{ font: "700 10.5px 'Plus Jakarta Sans'", color: '#5b647a', background: '#eef2f9', padding: '3px 9px', borderRadius: 20 }}>{e.proc}</span>}
-              <span style={{ flex: 1 }} />
-              <span style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7' }}>{e.prof}</span>
-              <Menu items={[{ label: 'Excluir', danger: true, onClick: () => setConfirmDel(e) }]} />
-            </div>
-            <div style={{ font: "500 13px/1.65 'Plus Jakarta Sans'", color: '#26324a', whiteSpace: 'pre-wrap' }}>{e.note}</div>
+    <div className="tab-body">
+      <div className="tab-narrow">
+        <div className="tab-head">
+          <h2 className="panel-title">Ficha de evolução <span>{sorted.length}</span></h2>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <button className="btn-soft" style={{ height: 40, padding: '0 14px', borderRadius: 11, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setPrinting(true)}>
+              <Icon name="print" size={15} /> Imprimir ficha
+            </button>
+            <button className="btn-cta" onClick={() => { setForm({ date: todayISO(), proc: '', note: '' }); setOpen(true) }}><Icon name="plus" size={16} /> Nova evolução</button>
           </div>
-        ))
-      )}
+        </div>
+
+        {sorted.length === 0 ? (
+          <div className="panel">
+            <EmptyState icon="clipboard" title="Nenhuma evolução registrada" desc="Registre a evolução clínica de cada sessão — conduta, intercorrências e orientações."
+              action={<Button onClick={() => setOpen(true)}>Nova evolução</Button>} />
+          </div>
+        ) : (
+          <div className="stack">
+            {sorted.map((e) => (
+              <article key={e.id} className="panel">
+                <div className="entry-head">
+                  <span style={{ font: '600 12.5px var(--font)', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>{e.date}</span>
+                  {e.proc && <span className="ficha-chip">{e.proc}</span>}
+                  <span style={{ flex: '1 1 0' }} />
+                  <span style={{ font: '400 12px var(--font)', color: 'var(--muted)' }}>{e.prof}</span>
+                  <Menu items={[{ label: 'Excluir', danger: true, onClick: () => setConfirmDel(e) }]} />
+                </div>
+                <p className="entry-text">{e.note}</p>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Nova evolução" subtitle="Registro clínico da sessão" width={480} dirty={!!(form.note.trim() || form.proc.trim())}
         footer={<><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={submit}>Registrar</Button></>}>
@@ -109,7 +113,7 @@ export default function Evolucao() {
           <Textarea autoFocus rows={5} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })}
             placeholder="Conduta realizada, intercorrências, orientações passadas, plano para a próxima sessão…" />
         </Field>
-        <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Assinado por {BRAND.dentist} · {BRAND.cro}</div>
+        <div style={{ font: "600 11px var(--font)", color: 'var(--muted)' }}>Assinado por {BRAND.dentist} · {BRAND.cro}</div>
       </Modal>
 
       <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)}

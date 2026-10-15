@@ -10,6 +10,18 @@ export const parseMoney = (s: string | number): number => {
 export const brMoney = (n: number): string =>
   `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
+/**
+ * Divide um total em `n` parcelas fechadas em centavos: a sobra da divisão vai
+ * na última. Somar as parcelas devolve exatamente o total (R$ 100 em 3x =
+ * 33,33 + 33,33 + 33,34), senão o carnê fecharia com diferença de centavos.
+ */
+export function dividirParcelas(total: number, n: number): number[] {
+  if (n <= 1) return [Math.round(total * 100) / 100]
+  const centavos = Math.round(total * 100)
+  const base = Math.floor(centavos / n)
+  return Array.from({ length: n }, (_, i) => (i === n - 1 ? centavos - base * (n - 1) : base) / 100)
+}
+
 /* ---------- Valor por extenso (recibos) ---------- */
 const UNIDADES = ['zero', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez',
   'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove']

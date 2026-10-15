@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import { ToastProvider } from './components/Toast'
+import { ConfirmHost } from './components/confirm'
 import { StoreProvider } from './store'
 import { GoogleProvider } from './lib/GoogleProvider'
 import { AuthProvider, useAuth } from './lib/auth'
@@ -23,8 +24,10 @@ function AnimatedRoutes() {
   const location = useLocation()
   // no tablet a home é o Resumo (cartões grandes); no desktop, o Dashboard completo
   const tablet = useTablet()
+  // na ficha, trocar de aba não remonta a página: o cabeçalho fica e só o conteúdo da aba troca
+  const chave = location.pathname.replace(/^(\/pacientes\/[^/]+)\/.*$/, '$1')
   return (
-    <div key={location.pathname} className="route-view fade-in">
+    <div key={chave} className="route-view fade-in">
       <Routes location={location}>
         <Route path="/" element={tablet ? <Resumo /> : <Dashboard />} />
         <Route path="/agenda" element={<Agenda />} />
@@ -53,7 +56,7 @@ function Gate({ children }: { children: ReactNode }) {
   if (loading) {
     return (
       <div className="login-bg">
-        <div className="spinner" style={{ width: 26, height: 26, borderColor: 'rgba(63,107,245,.25)', borderTopColor: '#3f6bf5' }} />
+        <div className="spinner" style={{ width: 26, height: 26, borderColor: 'rgba(63,107,245,.25)', borderTopColor: 'var(--primary)' }} />
       </div>
     )
   }
@@ -75,6 +78,7 @@ export default function App() {
               </GoogleProvider>
             </StoreProvider>
           </Gate>
+          <ConfirmHost />
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
