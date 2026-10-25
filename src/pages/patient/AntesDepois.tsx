@@ -136,8 +136,8 @@ export default function AntesDepois() {
     (m) => ({ region: m.region, units: m.units, x: m.x, y: m.y, angle: m.angle }),
     [],
   )
-  const [sim, setSim] = useState({ Testa: 0, Glabela: 0, 'Pés de galinha': 0, Preenchimento: 0 } as Record<string, number>)
-  const [showSim, setShowSim] = useState(false)
+  const [sim] = useState({ Testa: 0, Glabela: 0, 'Pés de galinha': 0, Preenchimento: 0 } as Record<string, number>)
+  const [showSim] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
 
   const onSaveProjection = async (dataUrl: string) => {

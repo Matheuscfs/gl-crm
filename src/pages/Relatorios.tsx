@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Dropdown } from '../components/Menu'
 import { StatCard } from '../components/ui'
 import { EmptyState } from '../components/States'
@@ -62,9 +62,9 @@ export default function Relatorios() {
     return { from: dates[0] ?? to, to }
   }, [periodo, events])
 
-  const inPeriod = (iso: string) => !!iso && iso >= window_.from && iso <= window_.to
+  const inPeriod = useCallback((iso: string) => !!iso && iso >= window_.from && iso <= window_.to, [window_])
 
-  const evPeriodo = useMemo(() => events.filter((e) => inPeriod(e.date)), [events, window_])
+  const evPeriodo = useMemo(() => events.filter((e) => inPeriod(e.date)), [events, inPeriod])
 
   const stats = useMemo(() => {
     const ativos = evPeriodo.filter((e) => e.status !== 'desmarcado')
@@ -87,7 +87,7 @@ export default function Relatorios() {
       + receitasPagas.filter((r) => inPeriod(brToIso(r.date))).reduce((s, r) => s + r.value, 0)
 
     return { concluidos, faltas, taxaFaltas, ocupacao, faturado, total: ativos.length }
-  }, [evPeriodo, horarios, window_, parcelasPagas, receitasPagas])
+  }, [evPeriodo, horarios, window_, parcelasPagas, receitasPagas, inPeriod])
 
   // procedimentos mais realizados (exclui desmarcados e faltas)
   const topProcs = useMemo(() => {
