@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '../components/Button'
 import { Menu, Dropdown } from '../components/Menu'
 import { Modal } from '../components/Modal'
@@ -200,13 +200,16 @@ export default function Financeiro() {
 
   // filtro de período (aplica-se às tabelas e KPIs)
   const sel = useMemo(() => parseMonthLabel(month), [month])
-  const inPeriod = (dateStr: string) => {
-    if (!sel) return true
-    const d = parseBrDate(dateStr)
-    return d ? d.m === sel.m && d.y === sel.y : true
-  }
-  const fRows = useMemo(() => rows.filter((r) => inPeriod(r.venc)), [rows, sel])
-  const fEntries = useMemo(() => entries.filter((e) => inPeriod(e.date)), [entries, sel])
+  const inPeriod = useCallback(
+    (dateStr: string) => {
+      if (!sel) return true
+      const d = parseBrDate(dateStr)
+      return d ? d.m === sel.m && d.y === sel.y : true
+    },
+    [sel],
+  )
+  const fRows = useMemo(() => rows.filter((r) => inPeriod(r.venc)), [rows, inPeriod])
+  const fEntries = useMemo(() => entries.filter((e) => inPeriod(e.date)), [entries, inPeriod])
 
   const totReceita = fEntries.filter((e) => e.type === 'receita').reduce((s, e) => s + e.value, 0)
   const totDespesa = fEntries.filter((e) => e.type === 'despesa').reduce((s, e) => s + e.value, 0)
