@@ -212,6 +212,7 @@ export function AppBar() {
   const { pathname, search } = useLocation()
   const navigate = useNavigate()
   const clinic = useClinic()
+  const { findPatient, patients } = useStore()
 
   // cada nível vira link para voltar, menos o último (a tela atual)
   const trilha = useMemo<{ label: string; to?: string }[]>(() => {
@@ -219,10 +220,14 @@ export function AppBar() {
     const sec = SECOES.find(([p]) => pathname.startsWith(p))
     const out: { label: string; to?: string }[] = [{ label: sec?.[1] ?? '', to: sec?.[0] }]
     const pac = pathname.match(/^\/pacientes\/([^/]+)/)
-    if (pac) out.push({ label: decodeURIComponent(pac[1]) })
+    // a rota traz o id do paciente: mostra o nome, não o uuid (findPatient cobre ids provisórios)
+    if (pac) {
+      const key = decodeURIComponent(pac[1])
+      out.push({ label: (patients.find((p) => p._id === key) ?? findPatient(key))?.name ?? 'Paciente' })
+    }
     else if (pathname === '/pacientes' && new URLSearchParams(search).get('filtro') === 'vencidos') out.push({ label: 'Retornos vencidos' })
     return out
-  }, [pathname, search])
+  }, [pathname, search, findPatient, patients])
 
   return (
     <div className="appbar">
