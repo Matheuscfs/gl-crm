@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
+import { DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { Icon } from '../icons'
 import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
@@ -343,7 +343,7 @@ export default function Agenda() {
     }, 300)
   }
 
-  const onDragStart = (_e: DragStartEvent) => {
+  const onDragStart = () => {
     // mede a largura de uma coluna de dia para travar o arrasto horizontal por dia
     const g = gridRef.current
     if (g) setColW((g.clientWidth - 60) / 6)
