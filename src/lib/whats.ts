@@ -2,7 +2,8 @@ import type { Patient } from '../data'
 
 /** Monta o link wa.me com a mensagem; null se o telefone estiver vazio. */
 export function waLink(phone: string | undefined, msg: string): string | null {
-  const digits = (phone ?? '').replace(/\D/g, '')
+  // "045 98415-7928": o zero de discagem interurbana não faz parte do número internacional
+  const digits = (phone ?? '').replace(/\D/g, '').replace(/^0+/, '')
   if (!digits) return null
   const full = digits.length <= 11 ? `55${digits}` : digits
   return `https://wa.me/${full}?text=${encodeURIComponent(msg)}`
