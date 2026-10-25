@@ -9,6 +9,12 @@ function escapeCell(v: unknown): string {
   return s
 }
 
+/** Texto do CSV (separador ';', linhas CRLF), sem o BOM. */
+export function toCsv(headers: string[], rows: (string | number)[][]): string {
+  const sep = ';'
+  return [headers.map(escapeCell).join(sep), ...rows.map((r) => r.map(escapeCell).join(sep))].join('\r\n')
+}
+
 /**
  * Gera e baixa um CSV a partir de um cabeçalho e linhas.
  * @param filename nome do arquivo (sem extensão)
@@ -16,10 +22,8 @@ function escapeCell(v: unknown): string {
  * @param rows matriz de valores (mesma ordem dos headers)
  */
 export function exportCsv(filename: string, headers: string[], rows: (string | number)[][]) {
-  const sep = ';'
-  const lines = [headers.map(escapeCell).join(sep), ...rows.map((r) => r.map(escapeCell).join(sep))]
   // BOM para o Excel reconhecer UTF-8 (acentuação)
-  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
+  const blob = new Blob(['﻿' + toCsv(headers, rows)], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
