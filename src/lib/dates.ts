@@ -17,6 +17,18 @@ export function addDays(iso: string, n: number): string {
   return isoDate(d)
 }
 
+/**
+ * Soma `n` meses limitando o dia ao último do mês de destino — 31/01 + 1 mês vira
+ * 28/02, não 03/03 (o `setMonth` do JS transborda e estragaria o carnê).
+ */
+export function addMonths(iso: string, n: number): string {
+  const d = parseISO(iso)
+  const alvo = new Date(d.getFullYear(), d.getMonth() + n, 1)
+  const ultimoDia = new Date(alvo.getFullYear(), alvo.getMonth() + 1, 0).getDate()
+  alvo.setDate(Math.min(d.getDate(), ultimoDia))
+  return isoDate(alvo)
+}
+
 /** Segunda-feira da semana que contém `d`. */
 export function mondayOf(d: Date): string {
   const day = d.getDay() // 0=Dom .. 6=Sáb
@@ -67,6 +79,12 @@ export function brToIso(s: string): string {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
 }
 
+/** Vencimento padrão da 1ª parcela: dia 5 do mês seguinte. */
+export function primeiroVencimento(fromISO: string = todayISO()): string {
+  const d = parseISO(fromISO)
+  return isoDate(new Date(d.getFullYear(), d.getMonth() + 1, 5))
+}
+
 /** Vencimento em "dd/mm/aaaa" já passou? (o status "vencida" é derivado, nunca gravado) */
 export function isVencidaBr(vencBr: string): boolean {
   const iso = brToIso(vencBr)
@@ -93,4 +111,26 @@ export function maskBr(v: string): string {
   if (d.length > 2) out += '/' + d.slice(2, 4)
   if (d.length > 4) out += '/' + d.slice(4, 8)
   return out
+}
+
+/** Saudação pelo horário: "Bom dia" até 12h, "Boa tarde" até 18h, depois "Boa noite". */
+export function saudacao(d: Date = new Date()): string {
+  const h = d.getHours()
+  if (h < 12) return 'Bom dia'
+  if (h < 18) return 'Boa tarde'
+  return 'Boa noite'
+}
+
+/** Dias corridos de `fromISO` até `toISO` (negativo se `toISO` vem antes). */
+export function diffDays(fromISO: string, toISO: string): number {
+  return Math.round((parseISO(toISO).getTime() - parseISO(fromISO).getTime()) / 86400000)
+}
+
+/** Idade em anos completos (null sem data de nascimento válida). */
+export function idadeAnos(birthISO?: string | null, hoje: Date = new Date()): number | null {
+  if (!birthISO || !/^\d{4}-\d{2}-\d{2}/.test(birthISO)) return null
+  const [a, m, d] = birthISO.slice(0, 10).split('-').map(Number)
+  let anos = hoje.getFullYear() - a
+  if (hoje.getMonth() + 1 < m || (hoje.getMonth() + 1 === m && hoje.getDate() < d)) anos--
+  return anos >= 0 ? anos : null
 }

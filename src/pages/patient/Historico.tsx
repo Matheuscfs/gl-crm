@@ -9,11 +9,13 @@ import { useToast } from '../../components/Toast'
 import { SuggestInput } from '../../components/SuggestInput'
 import { DateField } from '../../components/DateField'
 import { todayISO, brDate } from '../../lib/dates'
-import { useParams } from 'react-router-dom'
-import { useCollection, usePatientId } from '../../lib/useCollection'
+import { esquema } from '../../lib/sync'
+import { supabase } from '../../lib/supabase'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { useCollection, usePatient } from '../../lib/useCollection'
 import { useStore, matchFicha } from '../../store'
 import { fmtMoney } from '../../lib/fmt'
-import { historico as seedHist, FRANKL, isSeedPatient } from '../../data'
+import { historico as seedHist, FRANKL } from '../../data'
 import { BRAND } from '../../brand'
 
 interface Treat {
@@ -23,44 +25,63 @@ interface Treat {
   prof: string
   frankl: number
   note: string
+  anuladaEm?: string
+  anuladaMotivo?: string
 }
 const SEED: Treat[] = seedHist.map((h, i) => ({ id: `seed-h${i}`, date: h.date, proc: h.proc, prof: h.prof, frankl: h.frankl, note: h.note }))
 const EMPTY: Omit<Treat, 'id'> = { date: todayISO(), proc: '', prof: BRAND.dentist, frankl: 3, note: '' }
 
 export default function Historico() {
   const { toast } = useToast()
-  const patientId = usePatientId()
+  const { patient: atual, patientId, demo } = usePatient()
   const { baixaProcedimento, gerarCobranca, procedimentos } = useStore()
-  const { id } = useParams()
-  const fullName = id ? decodeURIComponent(id) : ''
+  const fullName = atual?.name ?? ''
   const patientName = fullName.split(' ')[0] || 'paciente'
   const [autoBaixa, setAutoBaixa] = useState(true)
   const [autoCobranca, setAutoCobranca] = useState(true)
-  const { rows, add, remove } = useCollection<Treat>(
+  const { rows, add, save, remove } = useCollection<Treat>(
     'treatments',
     patientId,
-    (r) => ({ id: r.id as string, date: (r.treat_date as string) ?? '', proc: (r.proc as string) ?? '', prof: (r.prof as string) ?? '', frankl: (r.frankl as number) ?? 0, note: (r.note as string) ?? '' }),
-    (t) => ({ treat_date: t.date, proc: t.proc, prof: t.prof, frankl: t.frankl, note: t.note }),
-    isSeedPatient(fullName) ? SEED : [], // tratamentos demo só nos pacientes de demonstração
+    (r) => ({ id: r.id as string, date: (r.treat_date as string) ?? '', proc: (r.proc as string) ?? '', prof: (r.prof as string) ?? '', frankl: (r.frankl as number) ?? 0, note: (r.note as string) ?? '', anuladaEm: (r.anulada_em as string) ?? undefined, anuladaMotivo: (r.anulada_motivo as string) ?? undefined }),
+    (t) => ({ treat_date: t.date, proc: t.proc, prof: t.prof, frankl: t.frankl, note: t.note, ...(esquema.v26 ? { anulada_em: t.anuladaEm, anulada_motivo: t.anuladaMotivo } : {}) }),
+    demo ? SEED : [], // tratamentos demo só nos pacientes de demonstração
   )
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState(EMPTY)
+  // registro clínico não se apaga: anula-se com motivo (sem a migração 0026, exclui com confirmação)
+  const podeAnular = !supabase || esquema.v26
+  const [anulando, setAnulando] = useState<Treat | null>(null)
+  const [motivo, setMotivo] = useState('')
+  const [confirmDel, setConfirmDel] = useState<Treat | null>(null)
+  const anular = async () => {
+    if (!anulando) return
+    if (motivo.trim().length < 5) return toast('Escreva o motivo da anulação.', 'error')
+    const ok = await save({ ...anulando, anuladaEm: new Date().toISOString(), anuladaMotivo: motivo.trim() })
+    if (!ok) return
+    setAnulando(null)
+    toast('Atendimento anulado — continua no histórico, riscado, com o motivo. A cobrança gerada (se houve) fica no Financeiro.')
+  }
 
-  const submit = () => {
+  const [salvando, setSalvando] = useState(false)
+  const submit = async () => {
+    if (salvando) return
     if (!form.proc.trim()) return toast('Informe o procedimento.', 'error')
     if (!form.date) return toast('Informe a data do atendimento.', 'error')
+    setSalvando(true)
     // o histórico armazena a data em dd/mm/aaaa; o form trabalha em ISO (DateField)
-    add({ ...form, date: brDate(form.date), frankl: Number(form.frankl) })
-    // baixa automática no estoque + cobrança no financeiro
+    const ok = await add({ ...form, date: brDate(form.date), frankl: Number(form.frankl) })
+    if (!ok) { setSalvando(false); return }
+    // baixa automática no estoque + cobrança no financeiro — só depois de o registro gravar
     const parts: string[] = []
     if (autoBaixa) {
       const consumidos = baixaProcedimento(form.proc, patientName)
       if (consumidos > 0) parts.push(`${consumidos} itens baixados do estoque`)
     }
     if (autoCobranca) {
-      const v = gerarCobranca(form.proc, fullName)
+      const v = await gerarCobranca(form.proc, atual?._id ?? fullName)
       if (v > 0) parts.push(`cobrança de ${fmtMoney(v)} gerada`)
     }
+    setSalvando(false)
     toast(parts.length ? `Atendimento registrado · ${parts.join(' · ')}.` : 'Atendimento registrado.')
     setOpen(false)
     setForm(EMPTY)
@@ -70,45 +91,55 @@ export default function Historico() {
   const cobrancaVal = matched?.val ?? 0
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px 28px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, maxWidth: 840 }}>
-        <div style={{ font: "800 15px 'Plus Jakarta Sans'", color: '#26324a' }}>Tratamentos executados ({rows.length})</div>
-        <Button icon={<Icon name="plus" size={17} />} onClick={() => { setForm(EMPTY); setOpen(true) }}>Novo atendimento</Button>
+    <div className="tab-body">
+      <div className="tab-narrow">
+        <div className="tab-head">
+          <h2 className="panel-title">Tratamentos executados <span>{rows.length}</span></h2>
+          <button className="btn-cta" onClick={() => { setForm(EMPTY); setOpen(true) }}><Icon name="plus" size={16} /> Novo atendimento</button>
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="panel"><EmptyState icon="cal" title="Nenhum atendimento registrado" desc="Registre o primeiro atendimento deste paciente." action={<Button onClick={() => setOpen(true)}>Novo atendimento</Button>} /></div>
+        ) : (
+          <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {rows.map((h, i) => {
+              const frk = FRANKL[h.frankl]
+              const last = i === rows.length - 1
+              return (
+                <li key={h.id} className="tl-row">
+                  <div className="tl-date">{h.date}</div>
+                  <div className="tl-rail" aria-hidden="true"><span className="dot" />{!last && <span className="line" />}</div>
+                  <article className={`panel tl-card${h.anuladaEm ? ' anulada' : ''}`}>
+                    <div className="entry-head">
+                      <span className="when">{h.date} ·</span>
+                      <h3 style={{ margin: 0, flex: '1 1 160px', minWidth: 0, font: '500 14px var(--font)', color: 'var(--ink)' }}>{h.proc}</h3>
+                      {frk && <span style={{ padding: '3px 10px', borderRadius: 20, font: '600 11px var(--font)', whiteSpace: 'nowrap', background: frk.bg, color: frk.fg }}>Frankl {frk.label}</span>}
+                      {!h.anuladaEm && <span style={{ marginLeft: 'auto' }}><Menu items={[podeAnular
+                        ? { label: 'Anular (com motivo)', danger: true, onClick: () => { setMotivo(''); setAnulando(h) } }
+                        : { label: 'Excluir', danger: true, onClick: () => setConfirmDel(h) }]} /></span>}
+                    </div>
+                    <div style={{ font: '400 12px var(--font)', color: 'var(--muted)', marginTop: 3 }}>{h.prof}</div>
+                    {h.note && <p className="entry-text">{h.note}</p>}
+                    {h.anuladaEm && <p className="entry-anulada">Anulado em {brDate(h.anuladaEm.slice(0, 10))}: {h.anuladaMotivo}</p>}
+                  </article>
+                </li>
+              )
+            })}
+          </ol>
+        )}
       </div>
 
-      {rows.length === 0 ? (
-        <div className="card" style={{ maxWidth: 840 }}><EmptyState icon="cal" title="Nenhum atendimento registrado" desc="Registre o primeiro atendimento deste paciente." action={<Button onClick={() => setOpen(true)}>Novo atendimento</Button>} /></div>
-      ) : (
-        <div style={{ maxWidth: 840 }}>
-          {rows.map((h, i) => {
-            const frk = FRANKL[h.frankl]
-            const last = i === rows.length - 1
-            return (
-              <div key={h.id} style={{ display: 'flex', gap: 18 }}>
-                <div style={{ width: 92, textAlign: 'right', font: "700 12px 'JetBrains Mono'", color: '#5b647a', paddingTop: 3, flex: 'none' }}>{h.date}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', alignSelf: 'stretch', flex: 'none' }}>
-                  <span style={{ width: 13, height: 13, borderRadius: '50%', background: '#3f6bf5', boxShadow: '0 0 0 3px #dbe4ff', marginTop: 4 }} />
-                  {!last && <span style={{ width: 2, flex: 1, background: '#eceff6', margin: '4px 0' }} />}
-                </div>
-                <div className="card card-hover" style={{ flex: 1, padding: '15px 18px', marginBottom: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                    <span style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a' }}>{h.proc}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {frk && <span style={{ padding: '3px 10px', borderRadius: 20, font: "700 11px 'Plus Jakarta Sans'", whiteSpace: 'nowrap', background: frk.bg, color: frk.fg }}>Frankl {frk.label}</span>}
-                      <Menu items={[{ label: 'Excluir', danger: true, onClick: () => { remove(h.id); toast('Atendimento removido.') } }]} />
-                    </div>
-                  </div>
-                  <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7', margin: '3px 0 8px' }}>{h.prof}</div>
-                  <div style={{ font: "500 12.5px/1.5 'Plus Jakarta Sans'", color: '#5b647a' }}>{h.note}</div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <Modal open={!!anulando} onClose={() => setAnulando(null)} title="Anular atendimento" subtitle={anulando ? `${anulando.date} · ${anulando.proc}` : ''} width={440}
+        footer={<><Button variant="outline" onClick={() => setAnulando(null)}>Cancelar</Button><Button variant="danger" onClick={() => void anular()}>Anular</Button></>}>
+        <p style={{ margin: 0, font: '400 13px/1.5 var(--font)', color: 'var(--text-2)' }}>O registro fica riscado na timeline, com o motivo e quem anulou.</p>
+        <Field label="Motivo"><Textarea autoFocus rows={3} value={motivo} onChange={(ev) => setMotivo(ev.target.value)} placeholder="Ex.: lançado em duplicidade." /></Field>
+      </Modal>
+      <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)}
+        onConfirm={async () => { if (confirmDel && await remove(confirmDel.id)) toast('Atendimento removido.') }}
+        title="Excluir atendimento" message={`Remover ${confirmDel?.proc ?? ''} de ${confirmDel?.date ?? ''}? A cobrança gerada (se houve) continua no Financeiro.`} />
 
       <Modal open={open} onClose={() => setOpen(false)} title="Novo atendimento" subtitle="Registro na timeline do paciente" dirty={!!(form.proc.trim() || form.note.trim())}
-        footer={<><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={submit}>Registrar</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button loading={salvando} onClick={submit}>Registrar</Button></>}>
         <FieldRow>
           <Field label="Data"><DateField value={form.date} onChange={(iso) => setForm({ ...form, date: iso })} /></Field>
           <Field label="Escala Frankl"><Select value={form.frankl} onChange={(e) => setForm({ ...form, frankl: Number(e.target.value) })}><option value={0}>Não se aplica</option>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{FRANKL[n].label}</option>)}</Select></Field>
@@ -126,15 +157,15 @@ export default function Historico() {
         <Field label="Profissional"><TextInput value={form.prof} onChange={(e) => setForm({ ...form, prof: e.target.value })} /></Field>
         <Field label="Observações"><Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Conduta, intercorrências, orientações…" /></Field>
         {hasBom && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 4, padding: '10px 12px', background: '#e9eeff', borderRadius: 10, cursor: 'pointer' }}>
-            <input type="checkbox" checked={autoBaixa} onChange={(e) => setAutoBaixa(e.target.checked)} style={{ accentColor: '#3f6bf5', width: 15, height: 15 }} />
-            <span style={{ font: "600 11.5px/1.4 'Plus Jakarta Sans'", color: '#2f52e0' }}>Dar baixa automática dos materiais da ficha técnica deste procedimento no estoque.</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 4, padding: '10px 12px', background: 'var(--primary-bg)', borderRadius: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={autoBaixa} onChange={(e) => setAutoBaixa(e.target.checked)} style={{ accentColor: 'var(--primary)', width: 15, height: 15 }} />
+            <span style={{ font: "600 11.5px/1.4 var(--font)", color: 'var(--primary-dark)' }}>Dar baixa automática dos materiais da ficha técnica deste procedimento no estoque.</span>
           </label>
         )}
         {cobrancaVal > 0 && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 4, padding: '10px 12px', background: '#e7f6ee', borderRadius: 10, cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 4, padding: '10px 12px', background: 'var(--green-bg)', borderRadius: 10, cursor: 'pointer' }}>
             <input type="checkbox" checked={autoCobranca} onChange={(e) => setAutoCobranca(e.target.checked)} style={{ accentColor: '#2f9a5b', width: 15, height: 15 }} />
-            <span style={{ font: "600 11.5px/1.4 'Plus Jakarta Sans'", color: '#217a47' }}>Gerar cobrança de <b>{fmtMoney(cobrancaVal)}</b> em contas a receber (Financeiro).</span>
+            <span style={{ font: "600 11.5px/1.4 var(--font)", color: 'var(--green-dark)' }}>Gerar cobrança de <b>{fmtMoney(cobrancaVal)}</b> em contas a receber (Financeiro).</span>
           </label>
         )}
       </Modal>

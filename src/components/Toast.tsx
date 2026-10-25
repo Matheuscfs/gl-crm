@@ -32,7 +32,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const toast = useCallback((text: string, kind: ToastKind = 'success') => {
     const id = ++seq
     setItems((s) => [...s, { id, kind, text }])
-    setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), 3200)
+    // erro fica mais tempo na tela: é o que a pessoa precisa ler e agir
+    setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), kind === 'error' ? 6000 : 3200)
   }, [])
 
   useEffect(() => {
@@ -43,14 +44,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{ toast }}>
       {children}
-      <div className="toast-wrap">
+      <div className="toast-wrap" role="status" aria-live="polite">
         {items.map((t) => (
           <div key={t.id} className={`toast ${t.kind}`}>
             <span
               className="toast-icon"
-              style={{ color: t.kind === 'error' ? '#dc2626' : t.kind === 'info' ? '#3f6bf5' : '#16a34a' }}
+              style={{ color: t.kind === 'error' ? 'var(--danger)' : t.kind === 'info' ? 'var(--primary)' : 'var(--success)' }}
             >
-              <Icon name={t.kind === 'error' ? 'alert' : t.kind === 'info' ? 'bell' : 'box'} size={17} />
+              <Icon name={t.kind === 'error' ? 'alert' : t.kind === 'info' ? 'bell' : 'check'} size={17} />
             </span>
             <span className="toast-text">{t.text}</span>
           </div>

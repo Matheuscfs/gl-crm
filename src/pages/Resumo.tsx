@@ -1,64 +1,69 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Icon } from '../icons'
-import { useStore, initials, precisaComprar } from '../store'
+import { useMemo } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Icon, type IconName } from '../icons'
+import { useStore, precisaComprar, patientPath, type EventItem } from '../store'
 import { STATUS, fmtHour } from '../data'
-import { areaInfo, AREA_PADRAO } from '../inventario'
-import { todayISO, addDays, parseISO } from '../lib/dates'
-import { brMoney, parseMoney } from '../lib/money'
+import { todayISO, addDays, parseISO, saudacao } from '../lib/dates'
+import { brMoney } from '../lib/money'
 import { supabase } from '../lib/supabase'
-import { isVencidaBr } from '../lib/dates'
+import { useParcelas } from '../lib/useParcelas'
 import { UserMenu } from '../components/Chrome'
-import { PatientPhoto } from '../components/PatientPhoto'
+import { useToast } from '../components/Toast'
+import { diasDeRetornoVencido } from '../lib/retornos'
+import { msgAniversario, primeiroNome } from '../lib/mensagens'
+import { waLink, contactPhone } from '../lib/whats'
+import { BRAND } from '../brand'
 
 const WD_FULL = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado']
 const MONTHS_FULL = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 
-/** Saudação pelo horário — o Resumo abre o dia. */
-function saudacao(h: number) {
-  if (h < 12) return 'Bom dia'
-  if (h < 18) return 'Boa tarde'
-  return 'Boa noite'
-}
+const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`
+const juntar = (nomes: string[]) => (nomes.length <= 1 ? nomes.join('') : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`)
+
+/** Situação escrita na fila: "agendado" de hoje é "Sem confirmação", em vermelho. */
+const chipDe = (e: EventItem) => e.status === 'agendado'
+  ? { label: 'Sem confirmação', bg: 'var(--red-bg)', fg: 'var(--danger-text)' }
+  : { label: STATUS[e.status].label, bg: STATUS[e.status].bg, fg: STATUS[e.status].fg }
 
 /**
- * Resumo — a home do modo tablet, no espírito do app Saúde da Apple:
- * "Destaques" em cartões grandes e coloridos, cada um levando à tela cheia.
+ * Resumo — a página inicial no tablet e no celular: o que precisa de você,
+ * quatro destaques que levam à tela cheia e a fila do dia.
  */
 export default function Resumo() {
+  const navigate = useNavigate()
+  const { toast } = useToast()
   const { events, patients, estoque } = useStore()
-  const [aReceber, setAReceber] = useState<{ total: number; vencidas: number } | null>(null)
+  const { parcelas } = useParcelas()
 
   const today = todayISO()
+  const tomorrow = addDays(today, 1)
   const now = new Date()
   const dateLabel = `${WD_FULL[now.getDay()]}, ${now.getDate()} de ${MONTHS_FULL[now.getMonth()]}`
-
-  // contas a receber: só do banco (sem seed) para o cartão não mentir
-  useEffect(() => {
-    if (!supabase) return
-    let cancelled = false
-    supabase.from('installments').select('val,venc,status').then(({ data, error }) => {
-      if (cancelled || error || !data) return
-      const abertas = data.filter((r) => (r.status as string) !== 'pago')
-      setAReceber({
-        total: abertas.reduce((s, r) => s + parseMoney((r.val as string) ?? ''), 0),
-        vencidas: abertas.filter((r) => isVencidaBr((r.venc as string) ?? '')).length,
-      })
-    })
-    return () => { cancelled = true }
-  }, [])
+  const doutora = BRAND.dentist.split(' ').slice(0, 2).join(' ')
 
   const hoje = useMemo(
-    () => events.filter((e) => e.date === today).sort((a, b) => a.start - b.start),
+    () => events.filter((e) => e.date === today && e.status !== 'desmarcado').sort((a, b) => a.start - b.start),
     [events, today],
   )
   const agora = now.getHours() * 60 + now.getMinutes()
-  const proximo = hoje.find((e) => e.start * 60 >= agora - 30 && e.status !== 'concluido' && e.status !== 'faltou') ?? hoje[0]
-  const concluidos = hoje.filter((e) => e.status === 'concluido').length
+  const emSala = hoje.find((e) => e.status === 'em_atendimento')
+  const proximo = hoje.find((e) => e.start * 60 >= agora - 30 && e.status !== 'concluido' && e.status !== 'faltou')
+
+  // pendências: as mesmas do Início no computador
+  const amanhaSemConfirmacao = events.filter((e) => e.date === tomorrow && e.status === 'agendado')
+  const vencidas = (parcelas ?? []).filter((r) => r.status === 'vencida')
+  const pendencias = amanhaSemConfirmacao.length + vencidas.length
+  const resolver = () => navigate(amanhaSemConfirmacao.length ? '/agenda' : '/financeiro')
+
+  const aReceber = (parcelas ?? []).filter((r) => r.status === 'aberto').reduce((s, r) => s + r.val, 0)
+  const totalVencido = vencidas.reduce((s, r) => s + r.val, 0)
 
   const repor = useMemo(() => estoque.filter(precisaComprar), [estoque])
   const criticos = repor.filter((e) => e.status === 'critico')
-  const atrasados = useMemo(() => patients.filter((p) => p.late), [patients])
+  const retornos = useMemo(() => patients
+    .map((p) => ({ p, dias: diasDeRetornoVencido(p, today) }))
+    .filter((x) => x.dias !== null)
+    .sort((a, b) => (b.dias ?? 0) - (a.dias ?? 0)), [patients, today])
 
   const aniversarios = useMemo(() => patients.flatMap((p) => {
     if (!p.birthdate) return []
@@ -67,149 +72,129 @@ export default function Resumo() {
     for (let i = 0; i < 7; i++) {
       const d = parseISO(addDays(today, i))
       if (d.getDate() === b.getDate() && d.getMonth() === b.getMonth()) {
-        return [{ name: p.name, initials: p.initials || initials(p.name), turns: d.getFullYear() - b.getFullYear(), hoje: i === 0 }]
+        return [{ p, turns: d.getFullYear() - b.getFullYear(), hoje: i === 0, quando: i === 0 ? 'hoje' : i === 1 ? 'amanhã' : `${d.getDate()}/${d.getMonth() + 1}` }]
       }
     }
     return []
   }), [patients, today])
 
+  const parabenizar = (p: (typeof patients)[number]) => {
+    const link = waLink(contactPhone(p), msgAniversario(p))
+    if (!link) return toast(`Sem telefone cadastrado para ${p.name}.`, 'error')
+    window.open(link, '_blank', 'noopener')
+  }
+
+  const abrirPaciente = (nome: string) => {
+    const p = patients.find((x) => x.name === nome)
+    if (p) navigate(patientPath(p))
+    else navigate('/agenda')
+  }
+
+  const tiles: { to: string; icon: IconName; label: string; tone: string; toneBg: string; num: string; money?: boolean; sub: string; subDanger?: boolean }[] = [
+    {
+      to: '/agenda', icon: 'cal', label: 'Agenda de hoje', tone: 'var(--primary)', toneBg: 'var(--primary-bg)',
+      num: String(hoje.length),
+      sub: hoje.length === 0 ? 'nenhum atendimento marcado'
+        : emSala ? `em atendimento: ${primeiroNome(emSala.child)} · ${fmtHour(emSala.start)}`
+          : proximo ? `próximo: ${primeiroNome(proximo.child)} · ${fmtHour(proximo.start)}`
+            : 'todos atendidos',
+    },
+    {
+      to: '/estoque', icon: 'box', label: 'Estoque a repor', tone: repor.length ? 'var(--amber-dark)' : 'var(--green-dark)', toneBg: repor.length ? 'var(--amber-bg)' : 'var(--green-bg)',
+      num: String(repor.length),
+      sub: repor.length === 0 ? 'tudo acima do mínimo' : criticos.length ? `${plural(criticos.length, 'item crítico', 'itens críticos')}` : 'abaixo do mínimo · nenhum crítico',
+    },
+    {
+      to: '/financeiro', icon: 'dollar', label: 'A receber', tone: 'var(--green-dark)', toneBg: 'var(--green-bg)',
+      num: parcelas ? brMoney(aReceber) : '—', money: true,
+      sub: !parcelas ? 'carregando…' : totalVencido > 0 ? `mais ${brMoney(totalVencido)} vencidos` : 'nenhuma parcela vencida',
+      subDanger: totalVencido > 0,
+    },
+    {
+      to: '/pacientes?filtro=vencidos', icon: 'clock', label: 'Retornos vencidos', tone: retornos.length ? 'var(--danger-text)' : 'var(--green-dark)', toneBg: retornos.length ? 'var(--red-bg)' : 'var(--green-bg)',
+      num: String(retornos.length),
+      sub: retornos.length === 0 ? 'todos em dia'
+        : retornos.length <= 2 ? `${juntar(retornos.map((r) => primeiroNome(r.p.name)))} · chamar no WhatsApp`
+          : 'pacientes para chamar no WhatsApp',
+    },
+  ]
+
   return (
-    <>
-      <header className="hl-topbar">
+    <div className="page-body rs">
+      <header className="rs-top">
         <div style={{ minWidth: 0 }}>
-          <div className="hl-title">Resumo</div>
-          <div className="hl-sub">{dateLabel}</div>
+          <h1 className="rs-hello">{saudacao(now)}, <span className="title-2">{doutora}</span></h1>
+          <p className="rs-date">{dateLabel}</p>
         </div>
-        <UserMenu />
+        <UserMenu placement="down" />
       </header>
 
-      <div className="hl-scroll">
-        <div className="hl-hello">{saudacao(now.getHours())}, Dra. Gabriela 👋</div>
-
-        <div className="hl-section">Destaques</div>
-        <div className="hl-grid hl-grid-2">
-          <Link to="/agenda" className="hl-card hl-tile" style={{ '--area': '#3f6bf5', '--area-bg': '#e9eeff' } as React.CSSProperties}>
-            <span className="hl-tile-top"><span className="hl-tile-emoji" aria-hidden>🦷</span> Agenda de hoje</span>
-            <span className="hl-tile-num tnum">{hoje.length}</span>
-            <span className="hl-tile-sub">
-              {hoje.length === 0
-                ? 'nenhum atendimento marcado'
-                : proximo
-                  ? `próximo ${fmtHour(proximo.start)} · ${proximo.child}`
-                  : `${concluidos} concluídos`}
-            </span>
-          </Link>
-
-          <Link to="/estoque" className="hl-card hl-tile" style={{ '--area': repor.length ? '#d97706' : '#2f9a5b', '--area-bg': repor.length ? '#fdf1e2' : '#e7f6ee' } as React.CSSProperties}>
-            <span className="hl-tile-top"><span className="hl-tile-emoji" aria-hidden>📦</span> Estoque a repor</span>
-            <span className="hl-tile-num tnum">{repor.length}</span>
-            <span className="hl-tile-sub">
-              {repor.length === 0 ? 'tudo acima do mínimo' : criticos.length ? `${criticos.length} em nível crítico` : 'abaixo do mínimo'}
-            </span>
-          </Link>
-
-          <Link to="/financeiro" className="hl-card hl-tile" style={{ '--area': '#2f9a5b', '--area-bg': '#e7f6ee' } as React.CSSProperties}>
-            <span className="hl-tile-top"><span className="hl-tile-emoji" aria-hidden>💰</span> A receber</span>
-            <span className="hl-tile-num tnum" style={{ fontSize: 26 }}>{aReceber ? brMoney(aReceber.total) : '—'}</span>
-            <span className="hl-tile-sub">
-              {!aReceber ? 'conectando ao banco…' : aReceber.vencidas ? `${aReceber.vencidas} parcela(s) vencida(s)` : 'nenhuma parcela vencida'}
-            </span>
-          </Link>
-
-          <Link to="/pacientes" className="hl-card hl-tile" style={{ '--area': '#c2478a', '--area-bg': '#fdeaf3' } as React.CSSProperties}>
-            <span className="hl-tile-top"><span className="hl-tile-emoji" aria-hidden>👥</span> Retornos vencidos</span>
-            <span className="hl-tile-num tnum">{atrasados.length}</span>
-            <span className="hl-tile-sub">{atrasados.length ? 'pacientes para contatar' : 'todos em dia'}</span>
-          </Link>
+      <section className="panel hero" aria-live="polite">
+        <div>
+          {pendencias > 0 ? (
+            <p className="hero-text"><span className="alert">{plural(pendencias, 'pendência', 'pendências')}</span> {pendencias === 1 ? 'aguarda' : 'aguardam'} você.</p>
+          ) : (
+            <p className="hero-text"><span className="ok">Tudo em dia</span> por aqui.</p>
+          )}
+          <p className="hero-sub">
+            {pendencias === 0
+              ? 'Nenhuma consulta de amanhã sem confirmação e nenhuma parcela vencida.'
+              : [
+                  amanhaSemConfirmacao.length ? plural(amanhaSemConfirmacao.length, 'consulta de amanhã sem confirmação', 'consultas de amanhã sem confirmação') : '',
+                  vencidas.length ? plural(vencidas.length, 'parcela vencida', 'parcelas vencidas') : '',
+                ].filter(Boolean).join(' · ')}
+          </p>
         </div>
+        {pendencias > 0 && <button className="btn-cta" style={{ height: 46, padding: '0 20px', borderRadius: 14 }} onClick={resolver}>Resolver</button>}
+      </section>
 
-        <div className="hl-section">
-          Agenda de hoje
-          <Link className="hl-section-link" to="/agenda">ver tudo</Link>
-        </div>
-        <div className="hl-list">
-          {hoje.length === 0 && <div className="hl-empty">Nenhum atendimento hoje.</div>}
-          {hoje.slice(0, 6).map((e) => {
-            const st = STATUS[e.status]
-            const pat = patients.find((p) => p.name === e.child)
-            return (
-              <div key={e.id} className="hl-row">
-                <span className="hl-row-time tnum">{fmtHour(e.start)}</span>
-                <span className="hl-row-avatar">
-                  <PatientPhoto src={pat?.photoUrl} fallback={pat?.initials ?? initials(e.child)} />
-                </span>
-                <span className="hl-row-main" style={{ display: 'block' }}>
-                  <span className="hl-row-name">{e.child}</span>
-                  <span className="hl-row-sub">{e.proc || 'Atendimento'}</span>
-                </span>
-                <span className="pill" style={{ background: st.bg, color: st.fg }}>{st.label}</span>
-              </div>
-            )
-          })}
-        </div>
-
-        {repor.length > 0 && (
-          <>
-            <div className="hl-section">
-              Repor no estoque
-              <Link className="hl-section-link" to="/estoque">ver tudo</Link>
-            </div>
-            <div className="hl-list">
-              {repor.slice(0, 5).map((e) => {
-                const info = areaInfo(e.cat) ?? { ...AREA_PADRAO, key: e.cat, label: e.cat }
-                return (
-                  <div key={e.item} className="hl-row">
-                    <span className="hl-row-emoji" style={{ background: info.bg }} aria-hidden>{info.emoji}</span>
-                    <span className="hl-row-main" style={{ display: 'block' }}>
-                      <span className="hl-row-name">{e.item}</span>
-                      <span className="hl-row-sub">{e.cat} · tem {e.qtd} {e.un}, mínimo {e.min}</span>
-                    </span>
-                    <span className="pill" style={{ background: '#fdf1e2', color: '#9a5a06' }}>comprar</span>
-                  </div>
-                )
-              })}
-            </div>
-          </>
-        )}
-
-        {aniversarios.length > 0 && (
-          <>
-            <div className="hl-section">Aniversariantes da semana</div>
-            <div className="hl-list">
-              {aniversarios.map((b) => (
-                <div key={b.name} className="hl-row">
-                  <span className="hl-row-avatar" style={{ background: '#fff4e0', color: '#a35a06' }}>{b.initials}</span>
-                  <span className="hl-row-main" style={{ display: 'block' }}>
-                    <span className="hl-row-name">{b.name}</span>
-                    <span className="hl-row-sub">completa {b.turns} ano{b.turns === 1 ? '' : 's'}</span>
-                  </span>
-                  {b.hoje && <span className="pill" style={{ background: '#fff4e0', color: '#a35a06' }}>hoje 🎂</span>}
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {atrasados.length > 0 && (
-          <>
-            <div className="hl-section">Precisa de atenção</div>
-            <div className="hl-list">
-              {atrasados.slice(0, 5).map((p) => (
-                <Link key={p.name} to="/pacientes" className="hl-row">
-                  <span className="hl-row-emoji" style={{ background: '#fbeaea' }} aria-hidden>⏰</span>
-                  <span className="hl-row-main" style={{ display: 'block' }}>
-                    <span className="hl-row-name">{p.name}</span>
-                    <span className="hl-row-sub">retorno {p.next || 'vencido'}</span>
-                  </span>
-                  <span className="chev-right" style={{ color: '#c1c8d6' }}><Icon name="chevron" size={18} /></span>
-                </Link>
-              ))}
-            </div>
-          </>
-        )}
-
-        <div className="hl-foot">GL CRM · dados sincronizados com o Supabase</div>
+      <h2 className="rs-h2">Destaques</h2>
+      <div className="rs-grid">
+        {tiles.map((t) => (
+          <Link key={t.label} to={t.to} className="rs-tile" style={{ '--tone': t.tone, '--tone-bg': t.toneBg } as React.CSSProperties}>
+            <span className="rs-tile-top"><span className="rs-ico"><Icon name={t.icon} size={18} filled /></span>{t.label}<span className="chev"><Icon name="chevron" size={15} /></span></span>
+            <span className={`rs-num${t.money ? ' money' : ''}`}>{t.num}</span>
+            <span className={`rs-sub${t.subDanger ? ' danger' : ''}`}>{t.sub}</span>
+          </Link>
+        ))}
       </div>
-    </>
+
+      <h2 className="rs-h2">Fila do dia <Link to="/agenda">Ver agenda</Link></h2>
+      <div className="rs-list">
+        {hoje.length === 0 && <p className="qempty">Nenhum atendimento hoje.</p>}
+        {hoje.map((e) => {
+          const chip = chipDe(e)
+          return (
+            <button key={e.id} className={`rs-row${e.status === 'em_atendimento' ? ' now' : ''}`} onClick={() => abrirPaciente(e.child)}>
+              <span className="rs-time">{fmtHour(e.start)}</span>
+              <span className="rs-main">
+                <span className="rs-name">{e.child}</span>
+                <span className="rs-desc">{e.proc || 'Atendimento'}</span>
+              </span>
+              <span className="st-chip" style={{ background: chip.bg, color: chip.fg }}>{chip.label}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {aniversarios.length > 0 && (
+        <>
+          <h2 className="rs-h2">Aniversários da semana</h2>
+          <div className="rs-list">
+            {aniversarios.map((b) => (
+              <div key={b.p.name} className="rs-row" style={{ cursor: 'default' }}>
+                <span className="rs-main">
+                  <span className="rs-name">{b.p.name}</span>
+                  <span className="rs-desc">{b.quando} · completa {plural(b.turns, 'ano', 'anos')}</span>
+                </span>
+                <button className="btn-line" style={{ height: 36 }} onClick={() => parabenizar(b.p)}><Icon name="wa" size={15} /> Parabenizar</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <p className="rs-sync"><i className={supabase ? '' : 'demo'} />{supabase ? 'Dados salvos no banco do consultório' : 'Modo demonstração, com dados fictícios'}</p>
+    </div>
   )
 }

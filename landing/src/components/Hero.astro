@@ -1,0 +1,82 @@
+---
+import Icon from './Icon.astro'
+---
+<section class="hero" id="topo">
+  <div class="glow" aria-hidden="true"></div>
+  <div class="wrap">
+    <div class="hero-txt">
+      <span class="eyebrow eyebrow-pill entra"><span class="pulse-dot"></span> Lista de espera aberta · CRM odontológico</span>
+      <h1 class="h-display hero-h1 entra" style="--d: 0.08s">
+        <span>A agenda confirma.</span>
+        <span>O financeiro cobra.</span>
+        <span class="grad">Você atende.</span>
+      </h1>
+      <p class="lead entra" style="--d: 0.16s">
+        O CRM feito dentro de um consultório de verdade. Confirmação pelo WhatsApp, odontograma 3D,
+        prontuário com histórico, PIX e Receita Saúde — no computador, no tablet da recepção e no celular.
+      </p>
+      <div class="hero-cta entra" style="--d: 0.24s">
+        <a class="btn btn-primary" href="#lista">Entrar na lista de espera <Icon name="arrow" size={18} /></a>
+        <a class="btn btn-ghost" href="#um-dia">Ver um dia no consultório</a>
+      </div>
+      <ul class="hero-trust entra" style="--d: 0.3s">
+        <li><Icon name="check" size={16} stroke={2.4} /> WhatsApp oficial</li>
+        <li><Icon name="check" size={16} stroke={2.4} /> PIX, boleto e recibo</li>
+        <li><Icon name="check" size={16} stroke={2.4} /> Odontopediatria, clínica e HOF</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="wrap palco-wrap">
+    <div class="palco entra" style="--d: 0.36s">
+      <ul class="avisos" aria-hidden="true">
+        <li class="aviso" style="--d: 1.4s">
+          <span class="aviso-ico verde"><Icon name="check" size={18} stroke={2.4} /></span>
+          <span class="aviso-txt"><b>Pedro confirmou a consulta</b><span>Respondeu 1 no WhatsApp · agora</span></span>
+        </li>
+        <li class="aviso" style="--d: 2s">
+          <span class="aviso-ico violeta"><Icon name="dollar" size={18} /></span>
+          <span class="aviso-txt"><b>PIX recebido · R$ 480,00</b><span>Baixa automática · recibo emitido</span></span>
+        </li>
+        <li class="aviso" style="--d: 2.6s">
+          <span class="aviso-ico ambar"><Icon name="gift" size={18} /></span>
+          <span class="aviso-txt"><b>Laura faz 6 anos amanhã</b><span>Parabéns agendado no WhatsApp</span></span>
+        </li>
+      </ul>
+
+      <div class="o3d-host carregando" data-o3d role="img"
+        aria-label="Odontograma em 3D de exemplo, com as duas arcadas. Os dentes 36, 46 e 24 têm cárie; 16 e 47 já foram restaurados.">
+        <div class="o3d-tag" data-tag aria-hidden="true"><b></b><span></span></div>
+      </div>
+
+      <div class="achados dica" data-achados role="group" aria-label="Achados do exame">
+        <span class="achados-tit">Toque para montar o orçamento:</span>
+        <button class="achado" type="button" aria-pressed="false" data-dente="36">36 · cárie</button>
+        <button class="achado" type="button" aria-pressed="false" data-dente="46">46 · cárie</button>
+        <button class="achado" type="button" aria-pressed="false" data-dente="24">24 · cárie</button>
+      </div>
+
+      <aside class="plano" aria-label="Plano de tratamento de exemplo">
+        <div class="plano-top">
+          <span class="avatar rosa" aria-hidden="true">MC</span>
+          <div class="plano-quem"><b>Marina Costa</b><span>Plano de tratamento · 34 anos</span></div>
+        </div>
+        <ul class="plano-lista" data-itens aria-live="polite">
+          <li class="plano-vazio">Toque num dente vermelho e veja o orçamento se montar sozinho.</li>
+        </ul>
+        <div class="plano-total"><span>Total</span><strong data-total>R$ 0,00</strong></div>
+        <p class="plano-parc" data-parc></p>
+        <button class="btn btn-primary btn-xs plano-enviar" type="button" data-enviar disabled>
+          <Icon name="send" size={15} /> Enviar pelo WhatsApp
+        </button>
+        <p class="plano-status" data-status role="status"></p>
+        <p class="plano-nota">Paciente e valores de exemplo.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { iniciarPlano } from '../scripts/plano'
+  iniciarPlano()
+</script>

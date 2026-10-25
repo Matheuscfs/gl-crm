@@ -32,3 +32,32 @@ export async function pushAppointment(ev: { date: string; start: number; dur: nu
   }
   return (await res.json()).id as string
 }
+
+type EventoAgenda = { date: string; start: number; dur: number; child: string; proc: string; kind?: string; status?: string }
+
+/**
+ * Mantém o evento do Google igual ao agendamento: horário, procedimento e situação.
+ * Desmarcado/faltou apaga do Google (o horário fica livre lá também). Uma via: app → Google.
+ */
+export async function syncAppointment(gcalId: string, ev: EventoAgenda): Promise<boolean> {
+  const token = googleToken()
+  if (!token) return false
+  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events/${encodeURIComponent(gcalId)}`
+  if (ev.status === 'desmarcado' || ev.status === 'faltou') {
+    const r = await fetch(url, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+    return r.ok || r.status === 404 || r.status === 410
+  }
+  const fim = ev.start + ev.dur
+  const hm = (h: number) => `${pad(Math.floor(h))}:${pad(Math.round((h - Math.floor(h)) * 60))}`
+  const r = await fetch(url, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      summary: `${ev.status === 'confirmado' ? '✓ ' : ''}${ev.child} — ${ev.proc}`,
+      start: { dateTime: `${ev.date}T${hm(ev.start)}:00`, timeZone: 'America/Sao_Paulo' },
+      end: { dateTime: `${ev.date}T${hm(fim)}:00`, timeZone: 'America/Sao_Paulo' },
+    }),
+  })
+  if (!r.ok) console.error('[gcal] sync', r.status)
+  return r.ok
+}

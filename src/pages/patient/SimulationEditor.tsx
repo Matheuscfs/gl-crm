@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Button } from '../../components/Button'
+import { useToast } from '../../components/Toast'
 
 const MAX_W = 560
 type Tool = 'suavizar' | 'clarear' | 'volume' | 'empurrar'
@@ -53,6 +54,7 @@ function sampleBilinear(data: Uint8ClampedArray, w: number, h: number, x: number
 }
 
 export function SimulationEditor({ src, onClose, onSave }: { src: string; onClose: () => void; onSave: (dataUrl: string) => void }) {
+  const { toast } = useToast()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [tool, setTool] = useState<Tool>('suavizar')
   const [size, setSize] = useState(45)
@@ -183,7 +185,7 @@ export function SimulationEditor({ src, onClose, onSave }: { src: string; onClos
       const url = canvasRef.current!.toDataURL('image/jpeg', 0.9)
       onSave(url)
     } catch {
-      alert('Não foi possível exportar a imagem (restrição de origem da foto). Envie a foto pelo botão "Enviar antes" novamente.')
+      toast('Não foi possível exportar a imagem (restrição de origem da foto). Envie a foto "antes" novamente.', 'error')
     }
   }
 
@@ -193,8 +195,9 @@ export function SimulationEditor({ src, onClose, onSave }: { src: string; onClos
     <div style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(24,28,44,0.55)', display: 'flex', flexDirection: 'column', animation: 'overlay-in 0.2s ease both' }}>
       <div className="doc-toolbar" style={{ padding: '8px 16px' }}>
         <div className="doc-toolbar-title">Editor de projeção</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="outline" size="sm" onMouseDown={compareDown} onMouseUp={compareUp} onMouseLeave={compareUp}>Comparar</Button>
+        <div className="sim-toolbar-actions">
+          {/* pointer: segurar para comparar funciona no dedo do tablet, não só no mouse */}
+          <Button variant="outline" size="sm" onPointerDown={compareDown} onPointerUp={compareUp} onPointerLeave={compareUp} onPointerCancel={compareUp}>Comparar</Button>
           <Button variant="outline" size="sm" onClick={undo}>Desfazer</Button>
           <Button variant="outline" size="sm" onClick={reset}>Restaurar</Button>
           <Button size="sm" onClick={salvar}>Salvar projeção</Button>
@@ -202,29 +205,29 @@ export function SimulationEditor({ src, onClose, onSave }: { src: string; onClos
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 14, padding: 14, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-        <div style={{ background: '#fff', borderRadius: 14, padding: 8, boxShadow: '0 20px 60px -24px rgba(0,0,0,.5)', display: 'flex', flexDirection: 'column', minHeight: 0, maxHeight: '100%' }}>
+      <div className="sim-stage">
+        <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 8, boxShadow: '0 20px 60px -24px rgba(0,0,0,.5)', display: 'flex', flexDirection: 'column', minHeight: 0, maxHeight: '100%' }}>
           <canvas ref={canvasRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
             style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 130px)', width: 'auto', height: 'auto', borderRadius: 8, cursor: 'crosshair', touchAction: 'none', display: 'block' }} />
-          <div style={{ font: "700 10px 'Plus Jakarta Sans'", color: '#c2478a', textAlign: 'center', marginTop: 6 }}>Simulação — não constitui garantia de resultado</div>
+          <div style={{ font: "700 10px var(--font)", color: 'var(--brand-pink)', textAlign: 'center', marginTop: 6 }}>Simulação — não constitui garantia de resultado</div>
         </div>
 
-        <div style={{ width: 230, background: '#fff', borderRadius: 14, padding: '14px 16px', flex: 'none', boxShadow: '0 20px 60px -24px rgba(0,0,0,.4)', maxHeight: '100%', overflow: 'auto' }}>
-          <div style={{ font: "800 13px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 10 }}>Ferramenta</div>
+        <div className="sim-panel">
+          <div style={{ font: "800 13px var(--font)", color: 'var(--ink)', marginBottom: 10 }}>Ferramenta</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
             {TOOLS.map((t) => (
-              <button key={t.key} onClick={() => setTool(t.key)} className="chip" style={{ flex: '1 1 46%', padding: '8px 0', borderRadius: 9, font: "700 11.5px 'Plus Jakarta Sans'", border: `1px solid ${tool === t.key ? '#cdd8ff' : '#e5e9f2'}`, background: tool === t.key ? '#e9eeff' : '#fff', color: tool === t.key ? '#2f52e0' : '#5b647a' }}>{t.label}</button>
+              <button key={t.key} onClick={() => setTool(t.key)} className="chip" style={{ flex: '1 1 46%', padding: '8px 0', borderRadius: 9, font: "700 11.5px var(--font)", border: `1px solid ${tool === t.key ? 'var(--primary-border)' : 'var(--border-strong)'}`, background: tool === t.key ? 'var(--primary-bg)' : 'var(--surface)', color: tool === t.key ? 'var(--primary-dark)' : 'var(--slate)' }}>{t.label}</button>
             ))}
           </div>
           <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', font: "700 11px 'Plus Jakarta Sans'", color: '#5b647a', marginBottom: 3 }}><span>Tamanho do pincel</span><span>{size}%</span></div>
-            <input type="range" min={5} max={100} value={size} onChange={(e) => setSize(Number(e.target.value))} style={{ width: '100%', accentColor: '#3f6bf5' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', font: "700 11px var(--font)", color: 'var(--slate)', marginBottom: 3 }}><span>Tamanho do pincel</span><span>{size}%</span></div>
+            <input type="range" min={5} max={100} value={size} onChange={(e) => setSize(Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--primary)' }} />
           </div>
           <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', font: "700 11px 'Plus Jakarta Sans'", color: '#5b647a', marginBottom: 3 }}><span>Intensidade</span><span>{intensity}%</span></div>
-            <input type="range" min={5} max={100} value={intensity} onChange={(e) => setIntensity(Number(e.target.value))} style={{ width: '100%', accentColor: '#c2478a' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', font: "700 11px var(--font)", color: 'var(--slate)', marginBottom: 3 }}><span>Intensidade</span><span>{intensity}%</span></div>
+            <input type="range" min={5} max={100} value={intensity} onChange={(e) => setIntensity(Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--brand-pink)' }} />
           </div>
-          <div style={{ font: "600 11px/1.5 'Plus Jakarta Sans'", color: '#8b93a7', marginTop: 6 }}>
+          <div style={{ font: "600 11px/1.5 var(--font)", color: 'var(--muted)', marginTop: 6 }}>
             <b>Empurrar</b> arrasta os pixels na direção do movimento (remodela contorno, lábios, mandíbula). <b>Suavizar</b> reduz rugas, <b>Clarear</b> ilumina, <b>Volume</b> projeta preenchimento. Segure <b>Comparar</b> para ver o original.
           </div>
         </div>

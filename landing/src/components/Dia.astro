@@ -1,0 +1,104 @@
+---
+import Tela from './Tela.astro'
+import Icon, { type IconName } from './Icon.astro'
+
+const abas: [string, IconName, string][] = [['inicio', 'home', 'Início'], ['agenda', 'cal', 'Agenda'], ['pacientes', 'users', 'Pacientes'], ['financeiro', 'dollar', 'Financeiro'], ['estoque', 'box', 'Estoque']]
+
+const passos = [
+  {
+    hora: '07:40', aba: 'agenda', titulo: 'Antes de você chegar, a agenda já sabe quem vem.',
+    texto: 'As confirmações saíram ontem pelo WhatsApp. Quem respondeu 1 ficou verde; quem pediu para remarcar virou pendência da recepção — com o paciente e o horário na mão.',
+    tags: ['Semana, dia e mês', 'Arrastar para remarcar', 'Google Agenda'],
+  },
+  {
+    hora: '09:10', aba: 'pacientes', titulo: 'Na cadeira, a ficha inteira em um toque.',
+    texto: 'Anamnese, odontograma por face e evolução no mesmo lugar. Dentição decídua, mista ou permanente. Errou? Anula sem apagar: o prontuário guarda o histórico de cada alteração.',
+    tags: ['Odontograma 2D e 3D', 'Prevenção', 'Radiografias privadas'],
+  },
+  {
+    hora: '11:40', aba: 'pacientes', titulo: 'Orçamento enviado, aprovado e parcelado.',
+    texto: 'O plano sai do odontograma, vai para o WhatsApp do paciente e, aprovado, gera as parcelas no financeiro. A recepção não digita nada duas vezes.',
+    tags: ['Planos e orçamentos', 'Carnê', 'Desconto'],
+  },
+  {
+    hora: '14:05', aba: 'financeiro', titulo: 'O PIX caiu. O recibo saiu. A Receita Saúde está pronta.',
+    texto: 'Cobrança por PIX ou boleto com baixa automática, recibo na hora e o lançamento do Receita Saúde e do Carnê-Leão pronto para o fim do mês.',
+    tags: ['PIX copia e cola', 'Boleto', 'Carnê-Leão em CSV'],
+  },
+  {
+    hora: '16:20', aba: 'pacientes', titulo: 'Harmonização com lote, validade e mapa facial.',
+    texto: 'Cada aplicação marcada no rosto, com produto, unidades, lote e validade. Concluiu o atendimento, o estoque baixa sozinho — uma vez só.',
+    tags: ['Mapa facial', 'Antes e depois', 'Estoque por lote'],
+  },
+  {
+    hora: '18:30', aba: 'inicio', titulo: 'Amanhã já está organizado.',
+    texto: 'Retorno vencido, aniversário, retoque, parcela em aberto, material acabando: o CRM lembra de quem chamar e deixa a mensagem pronta.',
+    tags: ['Funil de leads', 'CRC', 'Régua de mensagens'],
+  },
+]
+---
+<section class="sec" id="um-dia" aria-labelledby="dia-tit">
+  <div class="wrap">
+    <div class="sec-head center">
+      <span class="eyebrow" data-reveal>Um dia no consultório</span>
+      <h2 class="h-sec" id="dia-tit" data-reveal style="--d: 0.06s">Das 7h40 às 18h30, <span class="t2">o CRM trabalha junto.</span></h2>
+      <p class="lead" data-reveal style="--d: 0.12s">Role a página e acompanhe o dia de uma clínica de odontopediatria, clínica geral e harmonização.</p>
+    </div>
+
+    <div class="dia">
+      <div class="dia-fixo" aria-hidden="true">
+        <div class="tablet">
+          <div class="tablet-tela">
+            <div class="tablet-barra"><span class="hora" data-hora>{passos[0].hora}</span><span class="ind"><span>5G</span><span class="bat"></span></span></div>
+            <div class="telas" data-telas>
+              {passos.map((_, i) => <Tela n={i} on={i === 0} />)}
+            </div>
+            <nav class="tablet-abas">
+              {abas.map(([id, ico, rot]) => (
+                <span class={`aba${id === passos[0].aba ? ' on' : ''}`} data-aba={id}><Icon name={ico} size={20} />{rot}</span>
+              ))}
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <ol class="passos">
+        {passos.map((p, i) => (
+          <li class={`passo${i === 0 ? ' ativo' : ''}`} data-passo={i} data-aba-passo={p.aba}>
+            <span class="passo-hora">{p.hora}</span>
+            <h3>{p.titulo}</h3>
+            <p>{p.texto}</p>
+            <div class="tags">{p.tags.map((t) => <span class="tag">{t}</span>)}</div>
+            <div class="passo-tela" aria-hidden="true"><Tela n={i} on /></div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </div>
+</section>
+
+<script>
+  const passos = [...document.querySelectorAll<HTMLElement>('[data-passo]')]
+  const telas = [...document.querySelectorAll<HTMLElement>('[data-telas] [data-tela]')]
+  const hora = document.querySelector<HTMLElement>('[data-hora]')!
+  const abas = [...document.querySelectorAll<HTMLElement>('[data-aba]')]
+  let atual = 0
+
+  const ativar = (i: number) => {
+    if (i === atual) return
+    atual = i
+    passos.forEach((p, j) => p.classList.toggle('ativo', j === i))
+    telas.forEach((t, j) => t.classList.toggle('on', j === i))
+    abas.forEach((b) => b.classList.toggle('on', b.dataset.aba === passos[i].dataset.abaPasso))
+    hora.textContent = passos[i].querySelector('.passo-hora')!.textContent
+    hora.classList.remove('vira')
+    void hora.offsetWidth
+    hora.classList.add('vira')
+  }
+
+  // o passo que cruza o meio da tela manda no aparelho
+  const io = new IntersectionObserver((es) => {
+    for (const e of es) if (e.isIntersecting) ativar(Number((e.target as HTMLElement).dataset.passo))
+  }, { rootMargin: '-48% 0px -48% 0px' })
+  passos.forEach((p) => io.observe(p))
+</script>

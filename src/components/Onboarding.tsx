@@ -45,21 +45,21 @@ export function Onboarding({ open, onClose }: { open: boolean; onClose: () => vo
         </>
       }>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '10px 6px 4px' }}>
-        <div style={{ width: 62, height: 62, borderRadius: 18, background: '#e9eeff', color: '#3f6bf5', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+        <div style={{ width: 62, height: 62, borderRadius: 18, background: 'var(--primary-bg)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
           <Icon name={s.icon} size={30} />
         </div>
-        <div style={{ font: "800 16px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 8 }}>{s.title}</div>
-        <div style={{ font: "500 13px/1.65 'Plus Jakarta Sans'", color: '#5b647a', maxWidth: 380 }}>{s.desc}</div>
+        <div style={{ font: "800 16px var(--font)", color: 'var(--ink)', marginBottom: 8 }}>{s.title}</div>
+        <div style={{ font: "500 13px/1.65 var(--font)", color: 'var(--slate)', maxWidth: 380 }}>{s.desc}</div>
         {s.to && (
           <button className="chip" onClick={() => goTo(s.to!)}
-            style={{ marginTop: 14, padding: '8px 16px', borderRadius: 10, border: '1px solid #cdd8ff', background: '#e9eeff', color: '#2f52e0', font: "700 12.5px 'Plus Jakarta Sans'" }}>
+            style={{ marginTop: 14, padding: '8px 16px', borderRadius: 10, border: '1px solid var(--primary-border)', background: 'var(--primary-bg)', color: 'var(--primary-dark)', font: "700 12.5px var(--font)" }}>
             {s.cta} →
           </button>
         )}
         <div style={{ display: 'flex', gap: 6, marginTop: 20 }}>
           {STEPS.map((_, j) => (
             <button key={j} onClick={() => setI(j)} aria-label={`Etapa ${j + 1}`}
-              style={{ width: j === i ? 22 : 8, height: 8, borderRadius: 8, border: 'none', cursor: 'pointer', background: j === i ? '#3f6bf5' : '#d7ddea', transition: 'all .2s ease' }} />
+              style={{ width: j === i ? 22 : 8, height: 8, borderRadius: 8, border: 'none', cursor: 'pointer', background: j === i ? 'var(--primary)' : 'var(--border-strong)', transition: 'all .2s ease' }} />
           ))}
         </div>
       </div>

@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '../icons'
-import { Pill } from '../components/ui'
 import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
 import { Field, TextInput, Select, FieldRow } from '../components/Field'
@@ -9,18 +8,39 @@ import { Menu, Dropdown } from '../components/Menu'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { EmptyState, SkeletonRows } from '../components/States'
 import { useToast } from '../components/Toast'
-import { useStore } from '../store'
+import { useStore, patientPath } from '../store'
 import { exportCsv } from '../lib/exportCsv'
-import { TREAT_STATUS, PERFIL, ORIGENS, idadeLabel, type TreatStatus, type Patient, type Perfil } from '../data'
+import { TREAT_STATUS, PERFIL, ORIGENS, idadeLabel, fmtHour, type TreatStatus, type Patient, type Perfil } from '../data'
 import { DateField } from '../components/DateField'
 import { maskCpf, validCpf, maskPhone, validPhone } from '../lib/masks'
 import { PatientPhoto } from '../components/PatientPhoto'
+import { useMediaQuery } from '../lib/useTablet'
+import { diasDeRetornoVencido } from '../lib/retornos'
+import { todayISO, addDays, parseISO, parseBr, diffDays, brDate } from '../lib/dates'
+import { findPatientForEvent, waLink, contactPhone } from '../lib/whats'
+import { msgRetorno, msgAniversario } from '../lib/mensagens'
 
-const GRID = '2.4fr 0.7fr 1.5fr 1fr 1.1fr 0.85fr 1.1fr'
 const AGE_OPTS = ['Todas as idades', '0–3 anos', '4–6 anos', '7–9 anos', '10+ anos']
 const STATUS_OPTS = ['Todos os status', ...Object.values(TREAT_STATUS).map((s) => s.label)]
 const TIPO_OPTS = ['Convênio e Particular', 'Particular', 'Convênio']
-const PERFIL_OPTS = ['Todos os perfis', 'Pediátrico', 'Estético', 'Adulto']
+const WD_LOWER = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
+
+type PerfilFiltro = 'todos' | Perfil
+const PERFIS: { key: PerfilFiltro; label: string }[] = [
+  { key: 'todos', label: 'Todos' },
+  { key: 'pediatrico', label: 'Pediátrico' },
+  { key: 'estetico', label: 'Estético' },
+  { key: 'adulto', label: 'Adulto' },
+]
+
+/** Situação do tratamento como texto + cor (a cor nunca vem sozinha). */
+const SITUACAO: Record<TreatStatus, string> = {
+  tratamento: 'info',
+  manutencao: 'ok',
+  concluido: 'neutral',
+  lead: 'warn',
+  primeira: 'warn',
+}
 
 const EMPTY = {
   name: '', age: '', resp: '', tipo: 'Particular' as Patient['tipo'], status: 'lead' as TreatStatus, perfil: 'pediatrico' as Perfil,
@@ -31,17 +51,28 @@ interface RespForm { name: string; rel: string; cpf: string; phone: string }
 const EMPTY_RESP: RespForm = { name: '', rel: 'Mãe', cpf: '', phone: '' }
 
 const ageYears = (age: string) => Number((age.match(/(\d+)\s*a/) || [])[1] ?? age) || 0
+/** Busca sem acento e sem caixa: "jose" encontra "José". */
+const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`
 
 export default function Pacientes() {
   const navigate = useNavigate()
-  const { patients, addPatient, updatePatient, deletePatient } = useStore()
+  const { patients, events, addPatient, updatePatient, deletePatient, carga } = useStore()
   const { toast } = useToast()
   const [query, setQuery] = useState('')
-  const [onlyOverdue, setOnlyOverdue] = useState(false)
+  // ?filtro=vencidos vem do atalho "Retornos vencidos" do menu lateral
+  const [params, setParams] = useSearchParams()
+  const onlyOverdue = params.get('filtro') === 'vencidos'
+  const setOnlyOverdue = (fn: (v: boolean) => boolean) => {
+    const next = new URLSearchParams(params)
+    if (fn(onlyOverdue)) next.set('filtro', 'vencidos')
+    else next.delete('filtro')
+    setParams(next, { replace: true })
+  }
   const [ageF, setAgeF] = useState(AGE_OPTS[0])
   const [statusF, setStatusF] = useState(STATUS_OPTS[0])
   const [tipoF, setTipoF] = useState(TIPO_OPTS[0])
-  const [perfilF, setPerfilF] = useState(PERFIL_OPTS[0])
+  const [perfilF, setPerfilF] = useState<PerfilFiltro>('todos')
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(EMPTY)
@@ -68,32 +99,86 @@ export default function Pacientes() {
     setStep(step + 1)
   }
   const [editing, setEditing] = useState<Patient | null>(null)
+  // nome com que o paciente foi aberto para edição: o store localiza o registro por ele,
+  // então renomear precisa usar o nome antigo (com o novo, nada era salvo)
+  const [editingOrig, setEditingOrig] = useState('')
+  const abrirEdicao = (p: Patient) => { setEditing(p); setEditingOrig(p.name) }
   const [confirmDel, setConfirmDel] = useState<Patient | null>(null)
-  const [loading, setLoading] = useState(true)
+  // esqueleto enquanto o banco carrega de verdade (antes era um atraso fixo de 450 ms)
+  const loading = carga === 'carregando'
 
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 450)
-    return () => clearTimeout(t)
-  }, [])
+  const hoje = todayISO()
+  const amanha = addDays(hoje, 1)
+  const idadeDe = (p: Patient) => (p.birthdate ? idadeLabel(p.birthdate) : '') || p.age
+
+  // próxima consulta marcada na agenda, por paciente
+  const proximaConsulta = useMemo(() => {
+    const m = new Map<string, { date: string; start: number }>()
+    events.forEach((e) => {
+      if (e.date < hoje || e.status === 'desmarcado' || e.status === 'faltou' || e.status === 'concluido') return
+      const p = findPatientForEvent(patients, e)
+      if (!p) return
+      const atual = m.get(p.name)
+      if (!atual || e.date < atual.date || (e.date === atual.date && e.start < atual.start)) m.set(p.name, { date: e.date, start: e.start })
+    })
+    return m
+  }, [events, patients, hoje])
+
+  const vencidosDias = useMemo(() => new Map(patients.map((p) => [p.name, diasDeRetornoVencido(p, hoje)])), [patients, hoje])
+  const totalVencidos = [...vencidosDias.values()].filter((d) => d !== null).length
 
   const rows = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return patients.filter((p) => {
-      if (onlyOverdue && !p.late) return false
-      if (q && !(p.name.toLowerCase().includes(q) || p.resp.toLowerCase().includes(q))) return false
+    const q = norm(query.trim())
+    const lista = patients.filter((p) => {
+      if (onlyOverdue && vencidosDias.get(p.name) == null) return false
+      if (q && !(norm(p.name).includes(q) || norm(p.resp).includes(q) || (p.cpf ?? '').replace(/\D/g, '').includes(q.replace(/\D/g, '') || '§'))) return false
       if (tipoF !== TIPO_OPTS[0] && p.tipo !== tipoF) return false
-      if (perfilF !== PERFIL_OPTS[0] && PERFIL[p.perfil ?? 'pediatrico'].label !== perfilF) return false
+      if (perfilF !== 'todos' && (p.perfil ?? 'pediatrico') !== perfilF) return false
       if (statusF !== STATUS_OPTS[0] && TREAT_STATUS[p.status].label !== statusF) return false
       if (ageF !== AGE_OPTS[0]) {
-        const y = ageYears(p.age)
+        const y = ageYears(idadeDe(p))
         const ok = (ageF === '0–3 anos' && y <= 3) || (ageF === '4–6 anos' && y >= 4 && y <= 6) || (ageF === '7–9 anos' && y >= 7 && y <= 9) || (ageF === '10+ anos' && y >= 10)
         if (!ok) return false
       }
       return true
     })
-  }, [query, onlyOverdue, ageF, statusF, tipoF, perfilF, patients])
+    // urgência primeiro: retorno vencido há mais tempo, depois o próximo retorno mais perto
+    const chave = (p: Patient) => {
+      const dias = vencidosDias.get(p.name)
+      if (dias != null) return -100000 - dias
+      const iso = parseBr(p.next ?? '')
+      return iso ? diffDays(hoje, iso) : 100000
+    }
+    return [...lista].sort((a, b) => chave(a) - chave(b) || a.name.localeCompare(b.name, 'pt-BR'))
+  }, [query, onlyOverdue, ageF, statusF, tipoF, perfilF, patients, vencidosDias, hoje])
 
-  const submit = () => {
+  const porPerfil = (k: Perfil) => patients.filter((p) => (p.perfil ?? 'pediatrico') === k).length
+  const contagemPerfil = (k: PerfilFiltro) => (k === 'todos' ? patients.length : porPerfil(k))
+  const emTratamento = patients.filter((p) => p.status === 'tratamento').length
+
+  const aniversarios = useMemo(() => patients.flatMap((p) => {
+    if (!p.birthdate) return []
+    const b = parseISO(p.birthdate)
+    if (Number.isNaN(b.getTime())) return []
+    for (let i = 0; i < 7; i++) {
+      const d = parseISO(addDays(hoje, i))
+      if (d.getDate() === b.getDate() && d.getMonth() === b.getMonth()) {
+        const anos = d.getFullYear() - b.getFullYear()
+        const quando = i === 0 ? 'hoje' : i === 1 ? 'amanhã' : `${WD_LOWER[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+        return [{ p, quando, anos }]
+      }
+    }
+    return []
+  }), [patients, hoje])
+
+  const abrirWhats = (p: Patient, msg: string) => {
+    const link = waLink(contactPhone(p), msg)
+    if (!link) return toast(`Sem telefone cadastrado para ${p.name}. Complete o cadastro.`, 'error')
+    window.open(link, '_blank', 'noopener')
+  }
+  const abrirFicha = (p: Patient) => navigate(patientPath(p, 'odontograma'))
+
+  const submit = async () => {
     if (!form.name.trim()) return toast(form.perfil === 'pediatrico' ? 'Informe o nome da criança.' : 'Informe o nome do paciente.', 'error')
     if (!form.birthdate) return toast('Informe a data de nascimento.', 'error')
     if (!validCpf(form.cpf)) return toast('CPF inválido.', 'error')
@@ -104,103 +189,260 @@ export default function Pacientes() {
       if (!validPhone(r.phone)) return toast(`Telefone de ${r.name.trim()} incompleto.`, 'error')
     }
     const r0 = filled[0]
+    if (saving) return
     setSaving(true)
-    setTimeout(() => {
-      addPatient({
+    const novo = await addPatient({
         name: form.name.trim(), age: idadeLabel(form.birthdate) || '—',
         resp: r0 ? `${r0.name.trim()} · ${r0.rel.toLowerCase()}` : '—', last: '—', next: 'a agendar', tipo: form.tipo, status: form.status, perfil: form.perfil,
         birthdate: form.birthdate, sex: form.sex, cpf: form.cpf, phone: form.phone, respCpf: r0?.cpf ?? '', respPhone: r0?.phone ?? '', prontuario: form.prontuario, origem: form.origem,
       }, filled.map((r, i) => ({ name: r.name.trim(), rel: r.rel, phone: r.phone, cpf: r.cpf, main: i === 0 })))
-      setSaving(false)
-      setOpen(false)
-      setForm(EMPTY)
-      setResps([{ ...EMPTY_RESP }])
-      toast('Paciente cadastrado com sucesso.')
-    }, 400)
+    setSaving(false)
+    if (!novo) return // o banco recusou: o aviso já apareceu e o formulário continua preenchido
+    setOpen(false)
+    setForm(EMPTY)
+    setResps([{ ...EMPTY_RESP }])
+    toast('Paciente cadastrado com sucesso.')
   }
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editing) return
+    if (!editing.name.trim()) return toast('Informe o nome do paciente.', 'error')
     if (!validCpf(editing.cpf ?? '')) return toast('CPF inválido.', 'error')
     if (!validCpf(editing.respCpf ?? '')) return toast('CPF do responsável inválido.', 'error')
     if (!validPhone(editing.phone ?? '') || !validPhone(editing.respPhone ?? '')) return toast('Telefone incompleto.', 'error')
-    updatePatient(editing.name, editing)
+    const novoNome = editing.name.trim()
+    if (novoNome !== editingOrig && patients.some((p) => p.name.toLowerCase() === novoNome.toLowerCase())) {
+      return toast(`Já existe um paciente chamado ${novoNome}.`, 'error')
+    }
+    const alvo = patients.find((p) => p.name === editingOrig)
+    if (!alvo) return
+    setSaving(true)
+    const ok = await updatePatient(alvo._id, { ...editing, name: novoNome })
+    setSaving(false)
+    if (!ok) return
     setEditing(null)
     toast('Paciente atualizado.')
   }
 
   const exportar = () => {
     const headers = ['Nome', 'Idade', 'Perfil', 'Responsável', 'Telefone', 'CPF', 'Convênio', 'Status', 'Última visita', 'Próximo retorno', 'Prontuário']
-    const data = rows.map((p) => [p.name, p.age, PERFIL[p.perfil ?? 'pediatrico'].label, p.resp, p.phone ?? '', p.cpf ?? '', p.tipo, TREAT_STATUS[p.status].label, p.last, p.next, p.prontuario ?? ''])
+    const data = rows.map((p) => [p.name, idadeDe(p), PERFIL[p.perfil ?? 'pediatrico'].label, p.resp, p.phone ?? '', p.cpf ?? '', p.tipo, TREAT_STATUS[p.status].label, p.last, p.next, p.prontuario ?? ''])
     exportCsv('pacientes', headers, data)
     toast(`${rows.length} paciente${rows.length === 1 ? '' : 's'} exportado${rows.length === 1 ? '' : 's'}.`)
+  }
+
+  // celular: cartões em lista no lugar da tabela de 880 px
+  const celular = useMediaQuery('(max-width: 640px)')
+  /** Linha de situação do cartão no celular: o que importa primeiro sobre o retorno. */
+  const linhaCelular = (p: Patient): { txt: string; danger?: boolean } => {
+    const dias = vencidosDias.get(p.name)
+    if (dias != null) return { txt: dias > 0 ? `Retorno vencido há ${plural(dias, 'dia', 'dias')}` : 'Retorno vencido', danger: true }
+    const consulta = proximaConsulta.get(p.name)
+    if (consulta) return { txt: `Próxima: ${consulta.date === hoje ? 'hoje' : consulta.date === amanha ? 'amanhã' : `${consulta.date.slice(8, 10)}/${consulta.date.slice(5, 7)}`}, ${fmtHour(consulta.start)}` }
+    return { txt: parseBr(p.next ?? '') ? `Retorno em ${p.next}` : 'Retorno a definir' }
+  }
+  /** "Ana Paula · mãe" → "mãe: Ana Paula" (como no cartão do canvas). */
+  const respCurto = (resp?: string) => {
+    if (!resp || resp === '—') return ''
+    const [nome, rel] = resp.split('·').map((x) => x.trim())
+    return rel ? `${rel}: ${nome.split(' ')[0]}` : nome
+  }
+
+  /** Próximo retorno: data, quanto falta (ou há quanto venceu) e a próxima consulta já marcada. */
+  const celulaRetorno = (p: Patient) => {
+    const dias = vencidosDias.get(p.name)
+    const iso = parseBr(p.next ?? '')
+    const consulta = proximaConsulta.get(p.name)
+    const consultaTxt = consulta ? `consulta ${consulta.date === hoje ? 'hoje' : consulta.date === amanha ? 'amanhã' : `em ${consulta.date.slice(8, 10)}/${consulta.date.slice(5, 7)}`} · ${fmtHour(consulta.start)}` : ''
+    if (dias != null) {
+      return (
+        <>
+          <span className="cell-main">{iso ? p.next : 'vencido'}</span>
+          <span className="cell-sub danger">{dias > 0 ? `vencido há ${plural(dias, 'dia', 'dias')}` : 'retorno vencido'}</span>
+          {consultaTxt && <span className="cell-sub info">{consultaTxt}</span>}
+        </>
+      )
+    }
+    if (iso) {
+      const falta = diffDays(hoje, iso)
+      return (
+        <>
+          <span className="cell-main">{p.next}</span>
+          <span className={`cell-sub${consultaTxt || falta <= 7 ? ' info' : ''}`}>{consultaTxt || (falta === 0 ? 'hoje' : falta === 1 ? 'amanhã' : `em ${plural(falta, 'dia', 'dias')}`)}</span>
+        </>
+      )
+    }
+    return (
+      <>
+        <span className="cell-main muted">{p.next && p.next !== '—' ? p.next : 'a definir'}</span>
+        {consultaTxt && <span className="cell-sub info">{consultaTxt}</span>}
+      </>
+    )
   }
 
   return (
     <>
       <header className="topbar">
-        <div className="topbar-title">Pacientes</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <label className="searchbox" style={{ width: 320 }}>
-            <Icon name="search" size={18} />
-            <input placeholder="Buscar criança ou responsável…" value={query} onChange={(e) => setQuery(e.target.value)} />
-          </label>
-          <Button variant="outline" onClick={exportar}>Exportar</Button>
-          <Button icon={<Icon name="plus" size={17} />} onClick={openNovo}>Novo paciente</Button>
+        <div>
+          <h1 className="topbar-title">Pacientes</h1>
+          <p className="topbar-sub">
+            {plural(patients.length, 'paciente', 'pacientes')} · {emTratamento} em tratamento
+            {totalVencidos > 0 && ` · ${plural(totalVencidos, 'com retorno vencido', 'com retorno vencido')}`}
+          </p>
+        </div>
+        <div className="topbar-actions">
+          {!celular && <button className="btn-soft" style={{ height: 40, padding: '0 16px', borderRadius: 11 }} onClick={exportar}>Exportar CSV</button>}
+          <button className="btn-cta" onClick={openNovo}><Icon name="plus" size={16} /> Novo paciente</button>
         </div>
       </header>
 
-      <div style={{ height: 56, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', borderBottom: '1px solid #eff2f9', background: '#fafbff' }}>
-        <div style={{ display: 'flex', gap: 9 }}>
-          <Dropdown label="Perfil" value={perfilF} options={PERFIL_OPTS} onChange={setPerfilF} />
-          <Dropdown label="Faixa etária" value={ageF} options={AGE_OPTS} onChange={setAgeF} />
-          <Dropdown label="Status do tratamento" value={statusF} options={STATUS_OPTS} onChange={setStatusF} />
-          <Dropdown label="Convênio / Particular" value={tipoF} options={TIPO_OPTS} onChange={setTipoF} />
-          <button onClick={() => setOnlyOverdue((v) => !v)} className="chip"
-            style={{ display: 'flex', alignItems: 'center', gap: 6, height: 34, padding: '0 13px', borderRadius: 9, font: "700 12.5px 'Plus Jakarta Sans'", ...(onlyOverdue ? { border: '1px solid #cdd8ff', background: '#e9eeff', color: '#2f52e0' } : { border: '1px solid #d7ddea', background: '#fff', color: '#5b647a' }) }}>
-            Retorno vencido {onlyOverdue ? '✕' : ''}
-          </button>
-        </div>
-        <span style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>
-          {patients.length} pacientes · <b style={{ color: '#26324a' }}>mostrando {rows.length}</b>
-        </span>
-      </div>
-
-      <div style={{ flex: 1, overflow: 'auto', padding: '16px 28px 24px' }}>
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div className="table-head" style={{ gridTemplateColumns: GRID }}>
-            <span>CRIANÇA</span><span>IDADE</span><span>RESPONSÁVEL PRINCIPAL</span><span>ÚLTIMA VISITA</span><span>PRÓXIMO RETORNO</span><span>TIPO</span><span>TRATAMENTO</span>
-          </div>
-          {loading && <SkeletonRows rows={6} />}
-          {!loading && rows.map((p) => {
-            const ts = TREAT_STATUS[p.status]
-            return (
-              <div key={p.name} className="table-row clickable" style={{ gridTemplateColumns: GRID }} onClick={() => navigate(`/pacientes/${encodeURIComponent(p.name)}/odontograma`)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
-                  <div className="avatar" style={{ width: 36, height: 36, overflow: 'hidden' }}>
-                    <PatientPhoto src={p.photoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} fallback={p.initials} />
-                  </div>
-                  <span style={{ font: "700 13px 'Plus Jakarta Sans'", color: '#26324a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
-                  <span className="pill" style={{ flex: 'none', padding: '2px 8px', background: PERFIL[p.perfil ?? 'pediatrico'].bg, color: PERFIL[p.perfil ?? 'pediatrico'].fg }}>{PERFIL[p.perfil ?? 'pediatrico'].short}</span>
-                </div>
-                <span className="tnum" style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{p.age}</span>
-                <span style={{ font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.resp}</span>
-                <span className="tnum" style={{ font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>{p.last}</span>
-                <span className="tnum" style={{ font: `${p.late ? 700 : 600} 12.5px 'Plus Jakarta Sans'`, color: p.late ? '#a81e1e' : '#26324a' }}>{p.next}</span>
-                <span><Pill bg={p.tipo === 'Convênio' ? '#eef4fb' : '#f0f2f4'} fg={p.tipo === 'Convênio' ? '#1d4ed8' : '#5b647a'}>{p.tipo}</Pill></span>
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                  <Pill bg={ts.bg} fg={ts.fg}>{ts.label}</Pill>
-                  <Menu items={[
-                    { label: 'Abrir ficha', onClick: () => navigate(`/pacientes/${encodeURIComponent(p.name)}/odontograma`) },
-                    { label: 'Editar', onClick: () => setEditing(p) },
-                    { label: 'Agendar', onClick: () => navigate('/agenda') },
-                    { label: 'Excluir', danger: true, onClick: () => setConfirmDel(p) },
-                  ]} />
-                </span>
+      <div className="page-body">
+        <div className="home-cols">
+          <section className="panel flush home-main" style={{ flexBasis: 860 }} aria-label="Lista de pacientes">
+            <div className="list-toolbar">
+              <label className="search-field">
+                <Icon name="search" size={16} />
+                <input placeholder="Nome, responsável ou CPF" aria-label="Buscar paciente" value={query} onChange={(e) => setQuery(e.target.value)} />
+              </label>
+              <div className="seg-sm" role="group" aria-label="Perfil">
+                {PERFIS.map((f) => (
+                  <button key={f.key} aria-pressed={perfilF === f.key} onClick={() => setPerfilF(f.key)}>{f.label}<span className="n">{contagemPerfil(f.key)}</span></button>
+                ))}
               </div>
-            )
-          })}
-          {!loading && rows.length === 0 && <EmptyState icon="users" title="Nenhum paciente encontrado" desc="Ajuste os filtros ou cadastre um novo paciente." action={<Button icon={<Icon name="plus" size={17} />} onClick={openNovo}>Novo paciente</Button>} />}
+              <button className="chip-toggle danger" aria-pressed={onlyOverdue} onClick={() => setOnlyOverdue((v) => !v)}>
+                <Icon name="clock" size={15} /> Retorno vencido <b style={{ fontWeight: 600 }}>{totalVencidos}</b>
+              </button>
+            </div>
+            <div className="list-toolbar" style={{ paddingTop: 0 }}>
+              <Dropdown label="Faixa etária" value={ageF} options={AGE_OPTS} onChange={setAgeF} />
+              <Dropdown label="Situação" value={statusF} options={STATUS_OPTS} onChange={setStatusF} />
+              <Dropdown label="Cobertura" value={tipoF} options={TIPO_OPTS} onChange={setTipoF} />
+            </div>
+
+            {celular ? (
+              <div className="pcards" aria-label="Pacientes">
+                {loading && <SkeletonRows rows={6} />}
+                {!loading && rows.map((p) => {
+                  const vencido = vencidosDias.get(p.name) != null
+                  const perfil = p.perfil ?? 'pediatrico'
+                  const idade = idadeDe(p)
+                  const st = linhaCelular(p)
+                  return (
+                    <button key={p.name} className={`pcard${vencido ? ' hot' : ''}`} onClick={() => abrirFicha(p)}>
+                      <span className={`p-avatar${vencido ? ' hot' : perfil === 'estetico' ? ' est' : ''}`}>
+                        <PatientPhoto src={p.photoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} fallback={p.initials} />
+                      </span>
+                      <span className="pcard-main">
+                        <span className="pcard-name">{p.name}</span>
+                        <span className="pcard-sub">{[idade && idade !== '—' ? idade : '', respCurto(p.resp) || PERFIL[perfil].label.toLowerCase()].filter(Boolean).join(' · ')}</span>
+                        <span className={`pcard-st${st.danger ? ' danger' : ''}`}>{st.txt}</span>
+                      </span>
+                      <span className="chev-right" aria-hidden="true"><Icon name="chevron" size={17} /></span>
+                    </button>
+                  )
+                })}
+                {!loading && rows.length === 0 && <EmptyState icon="users" title="Nenhum paciente encontrado" desc="Ajuste a busca e os filtros ou cadastre um novo paciente." action={<Button icon={<Icon name="plus" size={17} />} onClick={openNovo}>Novo paciente</Button>} />}
+              </div>
+            ) : (
+            <div className="ptable">
+              <div className="ptable-inner" role="table" aria-label="Pacientes">
+                <div className="prow head" role="row">
+                  <span role="columnheader">Paciente</span><span role="columnheader">Situação</span><span role="columnheader">Próximo retorno</span>
+                  <span role="columnheader">Última visita</span><span role="columnheader">Responsável</span><span role="columnheader"><span className="visually-hidden">Ações</span></span>
+                </div>
+                {loading && <SkeletonRows rows={6} />}
+                {!loading && rows.map((p) => {
+                  const dias = vencidosDias.get(p.name)
+                  const vencido = dias != null
+                  const perfil = p.perfil ?? 'pediatrico'
+                  const idade = idadeDe(p)
+                  return (
+                    <div key={p.name} role="row" className={`prow clickable${vencido ? ' hot' : ''}`} onClick={() => abrirFicha(p)}>
+                      <span className="q-person" role="cell">
+                        <span className={`p-avatar${vencido ? ' hot' : perfil === 'estetico' ? ' est' : ''}`}>
+                          <PatientPhoto src={p.photoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} fallback={p.initials} />
+                        </span>
+                        <span className="q-text">
+                          <span className="q-main">{p.name}</span>
+                          <span className="q-sub">{[idade && idade !== '—' ? idade : '', PERFIL[perfil].label.toLowerCase(), p.prontuario ? `pront. ${p.prontuario.replace(/^#/, '')}` : ''].filter(Boolean).join(' · ')}</span>
+                        </span>
+                      </span>
+                      <span role="cell">
+                        {vencido
+                          ? <span className="q-reason danger">Retorno vencido</span>
+                          : <span className={`q-reason ${SITUACAO[p.status]}`}>{TREAT_STATUS[p.status].label}</span>}
+                      </span>
+                      <span className="q-text" role="cell">{celulaRetorno(p)}</span>
+                      <span className="q-text" role="cell">
+                        <span className={`cell-main${!p.last || p.last === '—' ? ' muted' : ''}`}>{p.last && p.last !== '—' ? p.last : 'nenhuma'}</span>
+                        <span className="cell-sub">{p.tipo}</span>
+                      </span>
+                      <span className="q-text" role="cell">
+                        <span className="cell-main" style={{ fontWeight: 400, color: p.resp && p.resp !== '—' ? 'var(--slate)' : 'var(--muted)' }}>{p.resp && p.resp !== '—' ? p.resp : 'o próprio paciente'}</span>
+                      </span>
+                      <span className="row-actions" role="cell" onClick={(e) => e.stopPropagation()}>
+                        {vencido
+                          ? <button className="btn-line danger" onClick={() => abrirWhats(p, msgRetorno(p))}>Chamar</button>
+                          : <button className="btn-line" onClick={() => navigate('/agenda')}>Agendar</button>}
+                        <Menu items={[
+                          { label: 'Abrir ficha', onClick: () => abrirFicha(p) },
+                          { label: 'Editar cadastro', onClick: () => abrirEdicao(p) },
+                          { label: 'Chamar no WhatsApp', onClick: () => abrirWhats(p, msgRetorno(p)) },
+                          { label: 'Excluir', danger: true, onClick: () => setConfirmDel(p) },
+                        ]} />
+                      </span>
+                    </div>
+                  )
+                })}
+                {!loading && rows.length === 0 && <EmptyState icon="users" title="Nenhum paciente encontrado" desc="Ajuste a busca e os filtros ou cadastre um novo paciente." action={<Button icon={<Icon name="plus" size={17} />} onClick={openNovo}>Novo paciente</Button>} />}
+              </div>
+            </div>
+            )}
+            <div className="list-foot">
+              <span>Mostrando <b style={{ fontWeight: 600, color: 'var(--ink)' }}>{rows.length} de {patients.length}</b> · urgentes primeiro</span>
+              {(query || onlyOverdue || perfilF !== 'todos' || ageF !== AGE_OPTS[0] || statusF !== STATUS_OPTS[0] || tipoF !== TIPO_OPTS[0]) && (
+                <button className="panel-link" onClick={() => { setQuery(''); setPerfilF('todos'); setAgeF(AGE_OPTS[0]); setStatusF(STATUS_OPTS[0]); setTipoF(TIPO_OPTS[0]); if (onlyOverdue) setOnlyOverdue(() => false) }}>Limpar filtros</button>
+              )}
+            </div>
+          </section>
+
+          <aside className="home-aside wrap-row" aria-label="Resumo dos pacientes">
+            <section className="panel">
+              <h2 className="panel-title sm">Por perfil</h2>
+              <div className="hbars">
+                {([['pediatrico', 'var(--primary)'], ['estetico', 'var(--brand-pink)'], ['adulto', 'var(--slate)']] as [Perfil, string][]).map(([k, cor]) => (
+                  <button key={k} onClick={() => setPerfilF(k)} style={{ border: 'none', background: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', font: 'inherit', color: 'inherit' }} aria-label={`Filtrar ${PERFIL[k].label}: ${porPerfil(k)}`}>
+                    <div className="hbar-top"><span>{PERFIL[k].label}</span><span>{porPerfil(k)}</span></div>
+                    <div className="hbar-track"><div className="hbar-fill" style={{ width: `${patients.length ? (porPerfil(k) / patients.length) * 100 : 0}%`, background: cor }} /></div>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel">
+              <h2 className="panel-title sm">Aniversariantes da semana</h2>
+              {aniversarios.length === 0 ? (
+                <p className="empty-note">Nenhum aniversário nos próximos 7 dias.</p>
+              ) : (
+                <div className="list-rows">
+                  {aniversarios.map(({ p, quando, anos }) => (
+                    <div key={p.name} className="list-row">
+                      <span className="p-avatar" style={{ background: 'var(--primary-bg)', color: 'var(--primary)' }}>{p.initials}</span>
+                      <span className="q-text" style={{ flex: 1 }}>
+                        <span className="q-main">{p.name}</span>
+                        <span className="q-sub">{quando} · {plural(anos, 'ano', 'anos')}</span>
+                      </span>
+                      <button className="panel-link" onClick={() => abrirWhats(p, msgAniversario(p))}>Parabenizar</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <div className="note-panel">
+              <b>Idade e retorno vencido são calculados</b> a partir da data de nascimento e do próximo retorno, todo dia. Nada fica congelado no cadastro.
+            </div>
+          </aside>
         </div>
       </div>
 
@@ -218,7 +460,7 @@ export default function Pacientes() {
         {/* progresso */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
           {stepsList.map((s, i) => (
-            <div key={s} style={{ flex: 1, height: 4, borderRadius: 4, background: i <= step ? '#3f6bf5' : '#e5eaf3', transition: 'background .2s ease' }} title={s} />
+            <div key={s} style={{ flex: 1, height: 4, borderRadius: 4, background: i <= step ? 'var(--primary)' : 'var(--line)', transition: 'background .2s ease' }} title={s} />
           ))}
         </div>
 
@@ -244,7 +486,7 @@ export default function Pacientes() {
         {form.perfil === 'pediatrico' && step === 1 && (
           <>
             {resps.map((r, i) => (
-              <div key={i} style={{ border: '1px solid #eceff6', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <FieldRow>
                   <Field label={i === 0 ? 'Nome (principal)' : 'Nome'}><TextInput autoFocus={i === 0} value={r.name} onChange={(e) => setResp(i, { name: e.target.value })} placeholder="Ex.: Ana Paula" /></Field>
                   <Field label="Parentesco"><Select value={r.rel} onChange={(e) => setResp(i, { rel: e.target.value })}><option>Mãe</option><option>Pai</option><option>Avó/Avô</option><option>Responsável legal</option></Select></Field>
@@ -255,7 +497,7 @@ export default function Pacientes() {
                 </FieldRow>
                 {i > 0 && (
                   <button onClick={() => setResps((prev) => prev.filter((_, j) => j !== i))}
-                    style={{ alignSelf: 'flex-end', border: 'none', background: 'transparent', font: "700 11.5px 'Plus Jakarta Sans'", color: '#a81e1e', cursor: 'pointer', padding: '2px 4px' }}>
+                    style={{ alignSelf: 'flex-end', border: 'none', background: 'transparent', font: "700 11.5px var(--font)", color: 'var(--danger-text)', cursor: 'pointer', padding: '2px 4px' }}>
                     Remover responsável
                   </button>
                 )}
@@ -272,8 +514,8 @@ export default function Pacientes() {
               <Field label="Status do tratamento"><Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as TreatStatus })}>{Object.entries(TREAT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</Select></Field>
             </FieldRow>
             <Field label="Como conheceu a clínica"><Select value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })}><option value="">—</option>{ORIGENS.map((o) => <option key={o} value={o}>{o}</option>)}</Select></Field>
-            <div style={{ padding: '11px 14px', borderRadius: 10, background: '#f4f6fb', border: '1px solid #e5eaf3', font: "600 12px/1.6 'Plus Jakarta Sans'", color: '#5b647a' }}>
-              <b style={{ color: '#26324a' }}>{form.name || '—'}</b> · {form.perfil === 'pediatrico' ? 'Pediátrico' : form.perfil === 'estetico' ? 'Estético' : 'Adulto'} · {form.tipo}
+            <div style={{ padding: '11px 14px', borderRadius: 10, background: 'var(--bg-soft)', border: '1px solid var(--line)', font: "600 12px/1.6 var(--font)", color: 'var(--slate)' }}>
+              <b style={{ color: 'var(--ink)' }}>{form.name || '—'}</b> · {form.perfil === 'pediatrico' ? 'Pediátrico' : form.perfil === 'estetico' ? 'Estético' : 'Adulto'} · {form.tipo}
               {form.birthdate ? ` · ${idadeLabel(form.birthdate)}` : ''}
               {form.perfil === 'pediatrico' && resps[0]?.name.trim() ? ` · Resp.: ${resps[0].name.trim()}` : ''}
             </div>
@@ -312,14 +554,14 @@ export default function Pacientes() {
               </>
             )}
             <FieldRow>
-              <Field label="Próximo retorno"><TextInput value={editing.next} onChange={(e) => setEditing({ ...editing, next: e.target.value })} /></Field>
+              <Field label="Próximo retorno"><DateField value={parseBr(editing.next ?? '') ?? ''} onChange={(iso) => setEditing({ ...editing, next: iso ? brDate(iso) : 'a agendar' })} /></Field>
               <Field label="Status"><Select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value as TreatStatus })}>{Object.entries(TREAT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</Select></Field>
             </FieldRow>
           </>
         )}
       </Modal>
 
-      <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={() => { if (confirmDel) { deletePatient(confirmDel.name); toast('Paciente excluído.') } }}
+      <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={async () => { if (!confirmDel) return; const alvo = patients.find((p) => p.name === confirmDel.name); if (alvo && await deletePatient(alvo._id)) toast('Paciente excluído.') }}
         title="Excluir paciente" message={`Excluir ${confirmDel?.name ?? ''}? Todos os dados da ficha serão removidos.`} />
     </>
   )

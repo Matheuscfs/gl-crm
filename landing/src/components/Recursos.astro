@@ -1,0 +1,36 @@
+---
+import Icon, { type IconName } from './Icon.astro'
+
+interface Rec { ico: IconName; cor?: string; tam?: 'g' | 'l'; titulo: string; texto: string; itens: string[] }
+const recursos: Rec[] = [
+  { ico: 'cal', tam: 'g', titulo: 'Agenda que se resolve', texto: 'Semana, dia ou mês. Arrasta para remarcar, avisa conflito, respeita o expediente e conclui o atendimento cobrando e baixando o estoque de uma vez.', itens: ['Confirmação 24 h antes', 'Agendamento online', 'Google Agenda'] },
+  { ico: 'tooth', cor: 'rosa', tam: 'g', titulo: 'Ficha completa do paciente', texto: 'Anamnese, odontograma 2D e 3D por face, evoluções com histórico, planos, financeiro, anexos, antes e depois — tudo na mesma ficha.', itens: ['Decídua, mista e permanente', 'Prevenção', 'Mapa facial'] },
+  { ico: 'doc', cor: 'azul', titulo: 'Documentos em um toque', texto: 'Já com os dados da clínica e a data de hoje.', itens: ['Receituário', 'Controle especial', 'Atestado', 'TCLE', 'Autorização de menor'] },
+  { ico: 'dollar', cor: 'verde', titulo: 'Financeiro sem planilha', texto: 'Contas a receber, PIX e boleto com baixa automática e recibos.', itens: ['PIX', 'Boleto', 'Receita Saúde', 'Carnê-Leão'] },
+  { ico: 'box', cor: 'ambar', titulo: 'Estoque por lote', texto: 'Mínimo, validade e lote, com ficha técnica por procedimento.', itens: ['Baixa automática', 'Alerta de validade'] },
+  { ico: 'funnel', titulo: 'Relacionamento', texto: 'Funil de leads, CRC e a régua de mensagens que traz o paciente de volta.', itens: ['Retorno', 'Retoque', 'Aniversário'] },
+  { ico: 'globe', cor: 'teal', titulo: 'Agendamento online', texto: 'Uma página pública com os horários livres. O paciente pede, a clínica aceita ou recusa.', itens: ['Sem ligação', 'Sem conflito'] },
+  { ico: 'devices', cor: 'rosa', titulo: 'Computador, tablet e celular', texto: 'Feito para o tablet da recepção e para o celular da dentista. Instala como app.', itens: ['Tema escuro', 'Instalável'] },
+  { ico: 'shield', tam: 'l', titulo: 'Só a equipe entra.', texto: 'Acesso só para os e-mails da equipe, radiografias e anexos em arquivos privados e um prontuário que guarda quem mudou o quê, e quando.', itens: ['Acesso por equipe', 'Anexos privados', 'Histórico de alterações'] },
+]
+---
+<section class="sec" id="recursos" aria-labelledby="rec-tit">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow" data-reveal>Recursos</span>
+      <h2 class="h-sec" id="rec-tit" data-reveal style="--d: 0.06s">Tudo o que o consultório usa. <span class="t2">Nada do que atrapalha.</span></h2>
+    </div>
+    <div class="bento">
+      {recursos.map((r, i) => (
+        <article class={`rc${r.tam ? ` ${r.tam}` : ''}`} data-reveal style={`--d: ${(i % 3) * 0.07}s`}>
+          <span class={`rc-ico${r.cor ? ` ${r.cor}` : ''}`}><Icon name={r.ico} size={22} /></span>
+          <div>
+            <h3 class="h-card">{r.titulo}</h3>
+            <p>{r.texto}</p>
+          </div>
+          <ul>{r.itens.map((t) => <li>{t}</li>)}</ul>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

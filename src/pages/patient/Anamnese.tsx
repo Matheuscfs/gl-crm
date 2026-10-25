@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
 import { Button } from '../../components/Button'
 import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
-import { usePatientId } from '../../lib/useCollection'
+import { usePatient } from '../../lib/useCollection'
 import { useLeaveGuard } from '../../lib/leaveGuard'
 import { useStore } from '../../store'
-import { isSeedPatient, type Perfil } from '../../data'
+import { type Perfil } from '../../data'
 
 type Field =
   | { id: string; label: string; type: 'text' | 'number' }
@@ -93,13 +92,12 @@ const ADULT_DEFAULTS: Record<string, unknown> = {
 
 export default function Anamnese({ perfil }: { perfil?: Perfil }) {
   const { toast } = useToast()
-  const patientId = usePatientId()
+  const { patientId, demo } = usePatient()
   const { anamnese: anamneseStore, saveAnamnese } = useStore()
   const adultForm = perfil === 'estetico' || perfil === 'adulto' // adulto e estético usam a anamnese de adulto
   const sections = adultForm ? ADULT_SECTIONS : PED_SECTIONS
-  const { id } = useParams()
   // respostas demo só para pacientes de demonstração — cadastro novo começa em branco
-  const defaults = isSeedPatient(id ? decodeURIComponent(id) : '') ? (adultForm ? ADULT_DEFAULTS : PED_DEFAULTS) : {}
+  const defaults = demo ? (adultForm ? ADULT_DEFAULTS : PED_DEFAULTS) : {}
   const [data, setData] = useState<Record<string, unknown>>(defaults)
   const [saving, setSaving] = useState(false)
   // snapshot do último estado salvo — base do aviso de "dados não salvos"
@@ -122,35 +120,36 @@ export default function Anamnese({ perfil }: { perfil?: Perfil }) {
   }, [patientId, adultForm])
 
   const dirty = JSON.stringify(data) !== savedRef.current
-  useLeaveGuard(dirty, 'A anamnese tem alterações não salvas — ao sair elas serão perdidas. Sair mesmo assim?')
+  useLeaveGuard(dirty, 'A anamnese tem alterações não salvas — ao sair elas serão perdidas.')
 
   const set = (id: string, v: unknown) => setData((d) => ({ ...d, [id]: v }))
 
-  const salvar = () => {
+  const salvar = async () => {
+    if (saving) return
+    if (!patientId) return toast('A ficha ainda está sincronizando com o banco. Tente de novo em instantes.', 'info')
     setSaving(true)
-    setTimeout(() => {
-      if (patientId) saveAnamnese(patientId, data)
-      savedRef.current = JSON.stringify(data)
-      setSaving(false)
-      toast('Anamnese salva.')
-    }, 400)
+    const ok = await saveAnamnese(patientId, data)
+    setSaving(false)
+    if (!ok) return toast('Não foi possível salvar a anamnese. Verifique a conexão e tente de novo.', 'error')
+    savedRef.current = JSON.stringify(data)
+    toast('Anamnese salva.')
   }
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '18px 28px 28px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ font: "800 15px 'Plus Jakarta Sans'", color: '#26324a' }}>Anamnese {adultForm ? 'do adulto' : 'pediátrica'}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {dirty && <span style={{ font: "700 11.5px 'Plus Jakarta Sans'", color: '#c48a1a' }}>● alterações não salvas</span>}
+    <div className="tab-body">
+      <div className="tab-head">
+        <h2 className="panel-title">Anamnese {adultForm ? 'do adulto' : 'pediátrica'}</h2>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          {dirty && <span role="status" style={{ font: '500 12px var(--font)', color: 'var(--amber-dark)' }}>alterações não salvas</span>}
           <Button loading={saving} onClick={salvar}>Salvar anamnese</Button>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, alignItems: 'start' }}>
+      <div className="cols-2" style={{ alignItems: 'start' }}>
         {sections.map((s) => (
-          <div key={s.title} className="card card-hover" style={{ padding: '18px 20px' }}>
-            <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 6 }}>{s.title}</div>
+          <section key={s.title} className="panel">
+            <h3 className="panel-title sm" style={{ marginBottom: 4 }}>{s.title}</h3>
             {s.fields.map((f) => <FieldRow key={f.id} f={f} value={data[f.id]} detail={data[`${f.id}_d`]} set={set} />)}
-          </div>
+          </section>
         ))}
       </div>
     </div>
@@ -159,46 +158,35 @@ export default function Anamnese({ perfil }: { perfil?: Perfil }) {
 
 function FieldRow({ f, value, detail, set }: { f: Field; value: unknown; detail: unknown; set: (id: string, v: unknown) => void }) {
   return (
-    <div style={{ padding: '10px 0', borderBottom: '1px solid #f2f5fb' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-        <span style={{ font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>{f.label}</span>
+    <div className="anam-row">
+      <div className="anam-q">
+        <span id={`q-${f.id}`}>{f.label}</span>
         {f.type === 'yesno' && (
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[['Não', false], ['Sim', true]].map(([lbl, val]) => {
-              const on = value === val
-              return (
-                <button key={String(val)} className="chip" onClick={() => set(f.id, val)}
-                  style={{ padding: '5px 12px', borderRadius: 8, font: "700 11.5px 'Plus Jakarta Sans'", border: `1px solid ${on ? '#cdd8ff' : '#e5e9f2'}`, background: on ? '#e9eeff' : '#fff', color: on ? '#2f52e0' : '#8b93a7' }}>
-                  {lbl}
-                </button>
-              )
-            })}
+          <div style={{ display: 'flex', gap: 6 }} role="group" aria-labelledby={`q-${f.id}`}>
+            {([['Não', false], ['Sim', true]] as const).map(([lbl, val]) => (
+              <button key={String(val)} className="chip-opt" aria-pressed={value === val} onClick={() => set(f.id, val)}>{lbl}</button>
+            ))}
           </div>
         )}
         {f.type === 'select' && (
-          <select className="field-select" style={{ width: 'auto', minWidth: 130, height: 34 }} value={String(value ?? '')} onChange={(e) => set(f.id, e.target.value)}>
+          <select className="field-select anam-select" aria-labelledby={`q-${f.id}`} value={String(value ?? '')} onChange={(e) => set(f.id, e.target.value)}>
             <option value=""></option>
             {f.options.map((o) => <option key={o}>{o}</option>)}
           </select>
         )}
         {(f.type === 'text' || f.type === 'number') && (
-          <input className="field-input" style={{ width: 200, height: 34 }} type={f.type === 'number' ? 'number' : 'text'} value={String(value ?? '')} onChange={(e) => set(f.id, e.target.value)} />
+          <input className="field-input anam-input" aria-labelledby={`q-${f.id}`} type={f.type === 'number' ? 'number' : 'text'} value={String(value ?? '')} onChange={(e) => set(f.id, e.target.value)} />
         )}
       </div>
       {f.type === 'yesno' && f.detail && value === true && (
-        <input className="field-input" style={{ marginTop: 8, height: 34 }} placeholder="Qual?" value={String(detail ?? '')} onChange={(e) => set(`${f.id}_d`, e.target.value)} />
+        <input className="field-input" style={{ marginTop: 8, height: 36 }} placeholder="Qual?" aria-label={`${f.label} — qual?`} value={String(detail ?? '')} onChange={(e) => set(`${f.id}_d`, e.target.value)} />
       )}
       {f.type === 'checks' && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }} role="group" aria-labelledby={`q-${f.id}`}>
           {f.options.map((o) => {
             const arr = Array.isArray(value) ? (value as string[]) : []
             const on = arr.includes(o)
-            return (
-              <button key={o} className="chip" onClick={() => set(f.id, on ? arr.filter((x) => x !== o) : [...arr, o])}
-                style={{ padding: '5px 11px', borderRadius: 20, font: "700 11px 'Plus Jakarta Sans'", border: `1px solid ${on ? '#cdd8ff' : '#e5e9f2'}`, background: on ? '#e9eeff' : '#fff', color: on ? '#2f52e0' : '#8b93a7' }}>
-                {o}
-              </button>
-            )
+            return <button key={o} className="chip-opt round" aria-pressed={on} onClick={() => set(f.id, on ? arr.filter((x) => x !== o) : [...arr, o])}>{o}</button>
           })}
         </div>
       )}

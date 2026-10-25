@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { useOutsideClick } from './useOutsideClick'
+import { Popover } from './Popover'
 import { Icon } from '../icons'
 
 export interface MenuItem {
@@ -23,26 +24,29 @@ export function Menu({
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  useOutsideClick(ref, () => setOpen(false), open)
+  const popRef = useRef<HTMLDivElement>(null)
+  useOutsideClick([ref, popRef], () => setOpen(false), open)
 
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
       <button
         className="icon-btn"
-        style={{ border: 'none', background: 'transparent', color: '#8b93a7', width: 30, height: 30 }}
+        style={{ border: 'none', background: 'transparent', color: 'var(--muted)', width: 30, height: 30 }}
         onClick={(e) => {
           e.stopPropagation()
           setOpen((v) => !v)
         }}
         aria-label="Abrir menu"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         {trigger ?? <Icon name="dots" size={18} />}
       </button>
-      {open && (
-        <div className="menu-pop" style={{ width, [align]: 0 } as React.CSSProperties} onClick={(e) => e.stopPropagation()}>
+      <Popover anchor={ref} popRef={popRef} open={open} align={align} width={width} role="menu" onClick={(e) => e.stopPropagation()}>
           {items.map((it) => (
             <button
               key={it.label}
+              role="menuitem"
               className={`menu-item${it.danger ? ' danger' : ''}`}
               disabled={it.disabled}
               onClick={() => {
@@ -53,8 +57,7 @@ export function Menu({
               {it.label}
             </button>
           ))}
-        </div>
-      )}
+      </Popover>
     </div>
   )
 }
@@ -75,7 +78,8 @@ export function Dropdown({
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  useOutsideClick(ref, () => setOpen(false), open)
+  const popRef = useRef<HTMLDivElement>(null)
+  useOutsideClick([ref, popRef], () => setOpen(false), open)
   const on = active ?? (!!value && value !== options[0])
 
   return (
@@ -90,16 +94,15 @@ export function Dropdown({
           height: 34,
           padding: '0 13px',
           borderRadius: 9,
-          font: "700 12.5px 'Plus Jakarta Sans'",
+          font: "700 12.5px var(--font)",
           ...(on
-            ? { border: '1px solid #cdd8ff', background: '#e9eeff', color: '#2f52e0' }
-            : { border: '1px solid #d7ddea', background: '#fff', color: '#5b647a' }),
+            ? { border: '1px solid var(--primary-border)', background: 'var(--primary-bg)', color: 'var(--primary-dark)' }
+            : { border: '1px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--slate)' }),
         }}
       >
         {value && value !== options[0] ? value : label} ▾
       </button>
-      {open && (
-        <div className="menu-pop" style={{ left: 0, width: 210 }} onClick={(e) => e.stopPropagation()}>
+      <Popover anchor={ref} popRef={popRef} open={open} width={210} onClick={(e) => e.stopPropagation()}>
           {options.map((o) => (
             <button
               key={o}
@@ -112,8 +115,7 @@ export function Dropdown({
               {o}
             </button>
           ))}
-        </div>
-      )}
+      </Popover>
     </div>
   )
 }

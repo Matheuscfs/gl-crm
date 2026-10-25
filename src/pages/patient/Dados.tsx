@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { Field, TextInput, FieldRow, Select } from '../../components/Field'
 import { Menu } from '../../components/Menu'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
-import { useCollection, usePatientId } from '../../lib/useCollection'
+import { useCollection, usePatient } from '../../lib/useCollection'
 import { useStore } from '../../store'
 import { idadeLabel, TREAT_STATUS, ORIGENS, type Patient, type Perfil, type TreatStatus } from '../../data'
 import { DateField } from '../../components/DateField'
@@ -28,17 +28,24 @@ interface Responsavel {
 
 export default function Dados() {
   const { toast } = useToast()
-  const patientId = usePatientId()
+  const { patient: p, patientId } = usePatient()
   const { patients, updatePatient } = useStore()
-  const { id } = useParams()
-  const p = patients.find((x) => x.name === (id ? decodeURIComponent(id) : ''))
   const est = (p?.perfil ?? 'pediatrico') !== 'pediatrico' // adulto e estético: paciente sem responsável
   const [editP, setEditP] = useState<Patient | null>(null)
-  const saveCadastro = () => {
+  const [salvando, setSalvando] = useState(false)
+  const saveCadastro = async () => {
     if (!editP || !p) return
     if (!validCpf(editP.cpf ?? '') || !validCpf(editP.respCpf ?? '')) return toast('CPF inválido.', 'error')
     if (!validPhone(editP.phone ?? '') || !validPhone(editP.respPhone ?? '')) return toast('Telefone incompleto.', 'error')
-    updatePatient(p.name, editP)
+    const novoNome = (editP.name ?? '').trim()
+    if (!novoNome) return toast('Informe o nome do paciente.', 'error')
+    if (novoNome.toLowerCase() !== p.name.toLowerCase() && patients.some((x) => x._id !== p._id && x.name.toLowerCase() === novoNome.toLowerCase())) {
+      return toast(`Já existe um paciente chamado ${novoNome}.`, 'error')
+    }
+    setSalvando(true)
+    const ok = await updatePatient(p._id, { ...editP, name: novoNome })
+    setSalvando(false)
+    if (!ok) return
     setEditP(null)
     toast('Cadastro atualizado.')
   }
@@ -57,6 +64,7 @@ export default function Dados() {
   const seedResp: Responsavel[] = p && !est
     ? [{ id: 'seed-main', name: (p.resp || '').split('·')[0].trim() || 'Responsável', rel: (p.resp || '').split('·')[1]?.trim() || 'Responsável', phone: p.respPhone ?? '', cpf: p.respCpf ?? '', main: true }]
     : []
+  const [removendo, setRemovendo] = useState<Responsavel | null>(null)
   const { rows: resp, setRows, add, save, remove } = useCollection<Responsavel>(
     'responsaveis',
     patientId,
@@ -77,40 +85,44 @@ export default function Dados() {
   }
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignContent: 'start' }}>
-      <div className="card card-hover" style={{ padding: '18px 20px' }}>
-        <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 8 }}>{est ? 'Dados do paciente' : 'Dados da criança'}</div>
-        {DADOS.map(([k, v]) => (
-          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '11px 0', borderBottom: '1px solid #f2f5fb' }}>
-            <span style={{ font: "600 12.5px 'Plus Jakarta Sans'", color: '#8b93a7' }}>{k}</span>
-            <span style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a', textAlign: 'right' }}>{v}</span>
+    <div className="tab-body">
+      <div className="cols-2">
+        <section className="panel" aria-labelledby="dados-titulo">
+          <div className="panel-head" style={{ marginBottom: 6 }}>
+            <h2 id="dados-titulo" className="panel-title sm">{est ? 'Dados do paciente' : 'Dados da criança'}</h2>
+            <button className="btn-soft" disabled={!p} onClick={() => p && setEditP({ ...p })}>Editar dados</button>
           </div>
-        ))}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-          <Button size="sm" variant="teal-soft" disabled={!p} onClick={() => p && setEditP({ ...p })}>Editar dados</Button>
-        </div>
-      </div>
+          {DADOS.map(([k, v]) => <div key={k} className="kv-row"><span>{k}</span><span>{v}</span></div>)}
+        </section>
 
-      {!est && <div className="card card-hover" style={{ padding: '18px 20px', alignSelf: 'start' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a' }}>Responsáveis</span>
-          <Button size="sm" onClick={() => { setForm({ name: '', rel: 'Mãe', phone: '', cpf: '', main: false }); setAdding(true) }}>+ Adicionar</Button>
-        </div>
-        {resp.map((r) => (
-          <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: '1px solid #f2f5fb' }}>
-            <div className="avatar" style={{ width: 38, height: 38 }}>{r.name.split(' ').map((s) => s[0]).slice(0, 2).join('')}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ font: "700 13px 'Plus Jakarta Sans'", color: '#26324a' }}>{r.name} {r.main && <span style={{ font: "700 10px 'Plus Jakarta Sans'", color: '#2f52e0', background: '#e9eeff', padding: '2px 7px', borderRadius: 12, marginLeft: 4 }}>principal</span>}</div>
-              <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7' }}>{r.rel}{r.phone ? ` · ${r.phone}` : ''}{r.cpf ? ` · CPF ${r.cpf}` : ''}</div>
+        {!est && (
+          <section className="panel" aria-labelledby="resp-titulo" style={{ alignSelf: 'start' }}>
+            <div className="panel-head" style={{ marginBottom: 6 }}>
+              <h2 id="resp-titulo" className="panel-title sm">Responsáveis</h2>
+              <button className="btn-soft" onClick={() => { setForm({ name: '', rel: 'Mãe', phone: '', cpf: '', main: false }); setAdding(true) }}>+ Adicionar</button>
             </div>
-            <Menu items={[
-              { label: 'Editar', onClick: () => setEdit(r) },
-              { label: 'Tornar principal', disabled: r.main, onClick: () => makeMain(r.id) },
-              { label: 'Remover', danger: true, disabled: r.main, onClick: () => { remove(r.id); toast('Responsável removido.') } },
-            ]} />
-          </div>
-        ))}
-      </div>}
+            {resp.length === 0 && <p className="empty-note">Nenhum responsável cadastrado.</p>}
+            <div className="row-list">
+              {resp.map((r) => (
+                <div key={r.id}>
+                  <span className="mini-avatar" aria-hidden="true">{r.name.split(' ').map((s) => s[0]).slice(0, 2).join('')}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, font: '500 13px var(--font)', color: 'var(--ink)' }}>
+                      {r.name} {r.main && <span className="badge-soft">principal</span>}
+                    </div>
+                    <div style={{ font: '400 12px var(--font)', color: 'var(--muted)', overflowWrap: 'anywhere' }}>{r.rel}{r.phone ? ` · ${r.phone}` : ''}{r.cpf ? ` · CPF ${r.cpf}` : ''}</div>
+                  </div>
+                  <Menu items={[
+                    { label: 'Editar', onClick: () => setEdit(r) },
+                    { label: 'Tornar principal', disabled: r.main, onClick: () => makeMain(r.id) },
+                    { label: 'Remover', danger: true, disabled: r.main, onClick: () => setRemovendo(r) },
+                  ]} />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
 
       <Modal open={adding} onClose={() => setAdding(false)} title="Adicionar responsável" width={420}
         footer={<><Button variant="outline" onClick={() => setAdding(false)}>Cancelar</Button><Button onClick={() => { if (!form.name.trim()) return toast('Informe o nome.', 'error'); if (!validCpf(form.cpf)) return toast('CPF inválido.', 'error'); if (!validPhone(form.phone)) return toast('Telefone incompleto.', 'error'); add(form); setAdding(false); toast('Responsável adicionado.') }}>Adicionar</Button></>}>
@@ -123,7 +135,14 @@ export default function Dados() {
       </Modal>
 
       <Modal open={!!edit} onClose={() => setEdit(null)} title="Editar responsável" width={420}
-        footer={<><Button variant="outline" onClick={() => setEdit(null)}>Cancelar</Button><Button onClick={() => { if (!edit) return; if (!validCpf(edit.cpf)) return toast('CPF inválido.', 'error'); if (!validPhone(edit.phone)) return toast('Telefone incompleto.', 'error'); save(edit); setEdit(null); toast('Responsável atualizado.') }}>Salvar</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setEdit(null)}>Cancelar</Button><Button onClick={async () => {
+          if (!edit) return
+          if (!validCpf(edit.cpf)) return toast('CPF inválido.', 'error')
+          if (!validPhone(edit.phone)) return toast('Telefone incompleto.', 'error')
+          setEdit(null)
+          const ok = await save(edit)
+          toast(ok ? 'Responsável atualizado.' : 'Não foi possível salvar o responsável.', ok ? 'success' : 'error')
+        }}>Salvar</Button></>}>
         {edit && (
           <>
             <Field label="Nome"><TextInput value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
@@ -138,7 +157,7 @@ export default function Dados() {
 
       {/* Editar cadastro do paciente */}
       <Modal open={!!editP} onClose={() => setEditP(null)} title="Editar cadastro" subtitle={editP?.name}
-        footer={<><Button variant="outline" onClick={() => setEditP(null)}>Cancelar</Button><Button onClick={saveCadastro}>Salvar</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setEditP(null)}>Cancelar</Button><Button loading={salvando} onClick={saveCadastro}>Salvar</Button></>}>
         {editP && (
           <>
             <FieldRow>
@@ -174,6 +193,10 @@ export default function Dados() {
           </>
         )}
       </Modal>
+
+      <ConfirmDialog open={!!removendo} onClose={() => setRemovendo(null)} confirmLabel="Remover"
+        onConfirm={async () => { if (removendo && await remove(removendo.id)) toast('Responsável removido.') }}
+        title="Remover responsável" message={`Remover ${removendo?.name ?? ''} dos responsáveis deste paciente?`} />
     </div>
   )
 }

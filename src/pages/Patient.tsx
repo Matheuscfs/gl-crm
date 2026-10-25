@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useParams, Navigate, Link } from 'react-router-dom'
-import PatientHeader, { Breadcrumb } from './patient/PatientHeader'
-import { EmptyState } from '../components/States'
+import PatientHeader from './patient/PatientHeader'
+import { EmptyState, SkeletonRows } from '../components/States'
 import { DEMO_DATA } from '../lib/demo'
 import Odontograma from './patient/Odontograma'
 import Anamnese from './patient/Anamnese'
@@ -13,18 +13,19 @@ import FinanceiroPaciente from './patient/FinanceiroPaciente'
 import Documentos from './patient/Documentos'
 import AntesDepois from './patient/AntesDepois'
 import MapaFacial from './patient/MapaFacial'
-import { useStore } from '../store'
+import { useStore, patientPath } from '../store'
 import { tabsFor, patients as seedPatients, type Patient as PatientT } from '../data'
 
 export default function Patient() {
   const { id, tab } = useParams()
-  const { patients, loadAnamnese } = useStore()
-  const name = id ? decodeURIComponent(id) : ''
+  const { findPatient, loadAnamnese, carga } = useStore()
+  // a rota traz o id do paciente (links antigos com o nome continuam funcionando)
+  const found = findPatient(id)
+  const name = found?.name ?? (id ? decodeURIComponent(id) : '')
   // sem o cadastro carregado não inventamos um paciente: o fallback de demonstração
   // só vale quando os dados fictícios estão ligados (ver lib/demo.ts)
-  const found = patients.find((p) => p.name === name)
-  const patient: PatientT | undefined = found ?? (DEMO_DATA ? seedPatients[0] : undefined)
-  const patientId = (patient as (PatientT & { _id?: string }) | undefined)?._id ?? null
+  const patient: PatientT | undefined = found ?? (DEMO_DATA && !id ? seedPatients[0] : undefined)
+  const patientId = found && !found._id.startsWith('tmp') && !found._id.startsWith('seed') ? found._id : null
   const tabs = tabsFor(patient?.perfil)
   const valid = new Set(tabs.map((t) => t.slug))
 
@@ -33,10 +34,20 @@ export default function Patient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientId])
 
+  // enquanto o banco carrega, não acusa "paciente não encontrado"
+  if (!found && carga === 'carregando') {
+    return <div className="ficha-page"><div className="tab-body"><SkeletonRows rows={6} /></div></div>
+  }
+
+  // link antigo (pelo nome) ou com id provisório: troca pelo endereço definitivo da ficha
+  if (found && id && decodeURIComponent(id) !== found._id && !found._id.startsWith('tmp')) {
+    return <Navigate to={patientPath(found, tab)} replace />
+  }
+
   if (!patient) {
     return (
       <>
-        <Breadcrumb name={name || 'Paciente'} />
+        <header className="topbar"><h1 className="topbar-title">{name || 'Paciente'}</h1></header>
         <EmptyState
           icon="users"
           title="Paciente não encontrado"
@@ -85,12 +96,11 @@ export default function Patient() {
   }
 
   return (
-    <>
-      <Breadcrumb name={patient.name} />
+    <div className="ficha-page">
       <PatientHeader activeTab={tab} patient={patient} tabs={tabs} patientId={patientId} />
-      <div key={tab} className="fade-in" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div key={tab} className="ficha-body fade-in">
         {content}
       </div>
-    </>
+    </div>
   )
 }

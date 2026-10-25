@@ -1,0 +1,21 @@
+---
+import { SITE } from '../site'
+---
+<footer class="rodape">
+  <div class="wrap">
+    <a class="logo" href="#topo">
+      <img src="/favicon.svg" alt="" width="30" height="30" />
+      <span>{SITE.marca}<span class="t2"> {SITE.sufixo}</span></span>
+    </a>
+    <nav aria-label="Rodapé">
+      <a href="#recursos">Recursos</a>
+      <a href="#duvidas">Dúvidas</a>
+      <a href="#lista">Lista de espera</a>
+    </nav>
+    <p>© {SITE.ano} {SITE.nome}. Feito no Brasil, dentro de um consultório.</p>
+  </div>
+</footer>
+
+<div class="barra-cta" data-barra>
+  <a class="btn btn-primary" href="#lista">Entrar na lista de espera</a>
+</div>

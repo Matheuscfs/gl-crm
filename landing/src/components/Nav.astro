@@ -1,0 +1,51 @@
+---
+import Icon from './Icon.astro'
+import { SITE } from '../site'
+---
+<a class="skip" href="#conteudo">Pular para o conteúdo</a>
+<header class="nav" data-nav>
+  <a class="logo" href="#topo" aria-label={`${SITE.nome}, início`}>
+    <img src="/favicon.svg" alt="" width="30" height="30" />
+    <span>{SITE.marca}<span class="t2"> {SITE.sufixo}</span></span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#whatsapp">Confirmação</a></li>
+    <li><a href="#um-dia">Um dia no consultório</a></li>
+    <li><a href="#recursos">Recursos</a></li>
+    <li><a href="#duvidas">Dúvidas</a></li>
+  </ul>
+  <div class="nav-right">
+    <button class="tema" type="button" data-tema aria-label="Alternar tema claro ou escuro">
+      <Icon name="moon" class="i-lua" />
+      <Icon name="sun" class="i-sol" />
+    </button>
+    <a class="btn btn-primary btn-sm" href="#lista">Lista de espera</a>
+  </div>
+</header>
+
+<script>
+  const nav = document.querySelector<HTMLElement>('[data-nav]')!
+  const aoRolar = () => nav.classList.toggle('rolou', window.scrollY > 12)
+  aoRolar()
+  window.addEventListener('scroll', aoRolar, { passive: true })
+
+  const raiz = document.documentElement
+  const cor = () => document.querySelector('meta[name="theme-color"]')?.setAttribute('content', raiz.dataset.theme === 'dark' ? '#121016' : '#f6f5f9')
+  cor()
+  document.querySelector('[data-tema]')!.addEventListener('click', () => {
+    const escuro = raiz.dataset.theme !== 'dark'
+    raiz.dataset.theme = escuro ? 'dark' : 'light'
+    try { localStorage.setItem('tema', escuro ? 'escuro' : 'claro') } catch {}
+    cor()
+    window.dispatchEvent(new Event('tema'))
+  })
+  // sem escolha salva, acompanha o sistema
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    let salvo: string | null = null
+    try { salvo = localStorage.getItem('tema') } catch {}
+    if (salvo) return
+    raiz.dataset.theme = e.matches ? 'dark' : 'light'
+    cor()
+    window.dispatchEvent(new Event('tema'))
+  })
+</script>

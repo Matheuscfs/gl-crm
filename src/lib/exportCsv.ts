@@ -1,7 +1,9 @@
 /* Exportação de CSV real (download de blob) — compatível com Excel pt-BR (separador ';'). */
 
 function escapeCell(v: unknown): string {
-  const s = v == null ? '' : String(v)
+  let s = v == null ? '' : String(v)
+  // injeção de fórmula: texto vindo do cadastro como "=HYPERLINK(...)" executaria no Excel
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`
   // aspas duplas escapadas; envolve em aspas se tiver ; " ou quebra de linha
   if (/[";\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
   return s

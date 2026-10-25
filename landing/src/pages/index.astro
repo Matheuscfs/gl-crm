@@ -1,0 +1,30 @@
+---
+import Base from '../layouts/Base.astro'
+import Nav from '../components/Nav.astro'
+import Hero from '../components/Hero.astro'
+import Origem from '../components/Origem.astro'
+import Zap from '../components/Zap.astro'
+import Dia from '../components/Dia.astro'
+import Recursos from '../components/Recursos.astro'
+import Lista from '../components/Lista.astro'
+import Duvidas from '../components/Duvidas.astro'
+import Rodape from '../components/Rodape.astro'
+---
+<Base>
+  <Nav />
+  <main>
+    <Hero />
+    <Origem />
+    <Zap />
+    <Dia />
+    <Recursos />
+    <Lista />
+    <Duvidas />
+  </main>
+  <Rodape />
+</Base>
+
+<script>
+  import { iniciarEfeitos } from '../scripts/efeitos'
+  iniciarEfeitos()
+</script>

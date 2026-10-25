@@ -22,9 +22,11 @@ export interface Recibo {
   origin: ReciboOrigem
   refId?: string
   patientId?: string
+  /** Quando o recibo foi lançado no app Receita Saúde (migração 0026). */
+  receitaSaudeEm?: string
 }
 
-export type ReciboInput = Omit<Recibo, 'id' | 'number'> & { number?: number }
+export type ReciboInput = Omit<Recibo, 'id' | 'number' | 'receitaSaudeEm'> & { number?: number }
 
 const ORIGEM_LABEL: Record<ReciboOrigem, string> = {
   parcela: 'Parcela',
@@ -44,6 +46,7 @@ const fromRow = (r: any): Recibo => ({
   origin: (r.origin as ReciboOrigem) ?? 'avulso',
   refId: r.ref_id ?? undefined,
   patientId: r.patient_id ?? undefined,
+  receitaSaudeEm: r.receita_saude_em ?? undefined,
 })
 
 export async function listRecibos(): Promise<Recibo[]> {
@@ -99,4 +102,27 @@ export function carneLeaoRows(recibos: Recibo[]): (string | number)[][] {
       r.value.toFixed(2).replace('.', ','),
       ORIGEM_LABEL[r.origin],
     ])
+}
+
+/**
+ * Receita Saúde (Receita Federal): o profissional de saúde pessoa física emite o recibo pelo app
+ * e ele já entra no Carnê-Leão. Não há API pública — o sistema deixa os dados prontos para copiar,
+ * na ordem do app, e marca o que já foi lançado. Confirme as regras com o contador.
+ */
+export function textoReceitaSaude(r: Recibo, beneficiario?: { nome: string; cpf?: string }): string {
+  const linhas = [
+    `CPF do pagador: ${r.payerCpf || '—'}`,
+    `Nome do pagador: ${r.payerName}`,
+    beneficiario && beneficiario.nome !== r.payerName ? `Beneficiário (paciente): ${beneficiario.nome}${beneficiario.cpf ? ` · CPF ${beneficiario.cpf}` : ''}` : 'Beneficiário: o próprio pagador',
+    `Valor: ${r.value.toFixed(2).replace('.', ',')}`,
+    `Data do pagamento: ${r.issuedOn.split('-').reverse().join('/')}`,
+    `Descrição: ${r.description || 'serviços odontológicos'}`,
+  ]
+  return linhas.join('\n')
+}
+
+export async function marcarReceitaSaude(id: string, lancado: boolean): Promise<string | null> {
+  if (!supabase || id.startsWith('tmp')) return null
+  const { error } = await supabase.from('receipts').update({ receita_saude_em: lancado ? new Date().toISOString() : null }).eq('id', id)
+  return error ? error.message : null
 }

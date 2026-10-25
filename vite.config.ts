@@ -6,7 +6,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // "prompt": a versão nova espera a pessoa tocar em Atualizar (antes recarregava sozinha e
+      // fechava um formulário aberto no meio)
+      registerType: 'prompt',
       includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png', 'logo-gl.png'],
       manifest: {
         name: 'GL · Dra. Gabriela Lorenzi — CRM',
@@ -17,8 +19,8 @@ export default defineConfig({
         orientation: 'any',
         start_url: '/',
         scope: '/',
-        background_color: '#e6ecf8',
-        theme_color: '#e6ecf8',
+        background_color: '#f6f5f9',
+        theme_color: '#f6f5f9',
         icons: [
           { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
@@ -48,4 +50,18 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    // só o 3D (Three.js, ~580 KB) passa de 500 KB, e ele já carrega sob demanda na aba Odontograma
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // bibliotecas mudam pouco: em pacotes próprios, o celular só baixa de novo o código do app
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|@remix-run)[\\/]/.test(id)) return 'react'
+          if (id.includes('@supabase')) return 'supabase'
+        },
+      },
+    },
+  },
 })

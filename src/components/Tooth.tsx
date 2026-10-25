@@ -22,11 +22,11 @@ export function ToothBox({ state, size = 'lg', selected = false }: { state: Toot
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        font: `700 ${d.font}px/1 'Plus Jakarta Sans'`,
+        font: `700 ${d.font}px/1 var(--font)`,
         background: t.bg,
         color: t.fg,
         border: `1.5px ${t.dashed ? 'dashed' : 'solid'} ${t.border}`,
-        boxShadow: selected ? '0 0 0 2.5px #3f6bf5' : undefined,
+        boxShadow: selected ? '0 0 0 2.5px var(--primary)' : undefined,
       }}
     >
       {t.glyph}
@@ -47,7 +47,7 @@ export function ToothCol({
   selected?: boolean
   onClick?: (num: number) => void
 }) {
-  const numEl = <div style={{ font: `700 ${size === 'lg' ? 10 : 8}px 'JetBrains Mono'`, color: '#8b93a7' }}>{tooth.num}</div>
+  const numEl = <div style={{ font: `700 ${size === 'lg' ? 10 : 8}px var(--mono)`, color: 'var(--muted)' }}>{tooth.num}</div>
   const box = <ToothBox state={tooth.state} size={size} selected={selected} />
   return (
     <div
@@ -100,7 +100,7 @@ export function AnatomicalTooth({
   const kind = kindOf(tooth.num)
   const h = Math.round(width * 1.4)
   const numEl = (
-    <div style={{ font: "700 10px 'JetBrains Mono'", color: selected ? '#2f52e0' : '#8b93a7' }}>{tooth.num}</div>
+    <div style={{ font: "700 10px var(--mono)", color: selected ? 'var(--primary-dark)' : '#8b93a7' }}>{tooth.num}</div>
   )
   const svg = (
     <svg width={width} height={h} viewBox="0 0 40 56" style={{ display: 'block', overflow: 'visible' }}>
@@ -108,7 +108,7 @@ export function AnatomicalTooth({
         <path
           d={PATHS[kind]}
           fill={t.fill}
-          stroke={selected ? '#3f6bf5' : t.stroke}
+          stroke={selected ? '#5b2196' : t.stroke}
           strokeWidth={selected ? 2.4 : 1.6}
           strokeDasharray={t.dashed ? '3 2.5' : undefined}
           strokeLinejoin="round"
@@ -121,13 +121,77 @@ export function AnatomicalTooth({
       </g>
     </svg>
   )
+  // clicável vira botão de verdade: Tab chega em cada dente e Enter/Espaço seleciona
+  const interativo = onClick
+    ? {
+        role: 'button' as const, tabIndex: 0, 'aria-pressed': selected,
+        'aria-label': `Dente ${tooth.num}: ${t.label}`,
+        onClick: () => onClick(tooth.num),
+        onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(tooth.num) } },
+      }
+    : {}
   return (
     <div
       className={`tooth-col${selected ? ' tooth-selected' : ''}`}
       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: onClick ? 'pointer' : undefined, opacity: dim ? 0.28 : 1, transition: 'opacity 0.2s ease' }}
-      onClick={onClick ? () => onClick(tooth.num) : undefined}
+      {...interativo}
     >
       {upper ? (<>{svg}{numEl}</>) : (<>{numEl}{svg}</>)}
     </div>
+  )
+}
+
+/* ---------- Faces do dente (M, D, O/I, V, L/P) ---------- */
+
+export type Face = 'V' | 'L' | 'M' | 'D' | 'O'
+export type Faces = Partial<Record<Face, ToothState>>
+
+/** Rótulo da face conforme o dente: incisal nos anteriores, palatina na arcada superior. */
+export function rotuloFace(f: Face, num: number): string {
+  const anterior = [1, 2, 3].includes(num % 10)
+  const superior = [1, 2, 5, 6].includes(Math.floor(num / 10))
+  return { V: 'V', L: superior ? 'P' : 'L', M: 'M', D: 'D', O: anterior ? 'I' : 'O' }[f]
+}
+const NOME_FACE: Record<string, string> = { V: 'vestibular', L: 'lingual', P: 'palatina', M: 'mesial', D: 'distal', O: 'oclusal', I: 'incisal' }
+export const nomeFace = (f: Face, num: number) => NOME_FACE[rotuloFace(f, num)]
+
+/**
+ * Diagrama clássico de 5 faces. Esquerda/direita da tela = mesial/distal conforme o lado
+ * (dentes do lado direito do paciente ficam à esquerda da tela, com a mesial voltada ao centro);
+ * em cima a vestibular na arcada superior e a lingual na inferior (como o dente aparece na arcada).
+ */
+export function FaceDiagram({ num, faces, size = 120, onFace }: { num: number; faces: Faces; size?: number; onFace?: (f: Face) => void }) {
+  const q = Math.floor(num / 10)
+  const ladoDireitoPaciente = [1, 4, 5, 8].includes(q)
+  const superior = [1, 2, 5, 6].includes(q)
+  const esq: Face = ladoDireitoPaciente ? 'D' : 'M'
+  const dir: Face = ladoDireitoPaciente ? 'M' : 'D'
+  const cima: Face = superior ? 'V' : 'L'
+  const baixo: Face = superior ? 'L' : 'V'
+  const regioes: { f: Face; d: string; lx: number; ly: number }[] = [
+    { f: cima, d: 'M2 2 L58 2 L42 18 L18 18 Z', lx: 30, ly: 11 },
+    { f: baixo, d: 'M18 42 L42 42 L58 58 L2 58 Z', lx: 30, ly: 52 },
+    { f: esq, d: 'M2 2 L18 18 L18 42 L2 58 Z', lx: 9, ly: 31 },
+    { f: dir, d: 'M42 18 L58 2 L58 58 L42 42 Z', lx: 51, ly: 31 },
+    { f: 'O', d: 'M18 18 L42 18 L42 42 L18 42 Z', lx: 30, ly: 31 },
+  ]
+  return (
+    <svg width={size} height={size} viewBox="0 0 60 60" role="group" aria-label={`Faces do dente ${num}`} style={{ display: 'block' }}>
+      {regioes.map((r) => {
+        const st = faces[r.f]
+        const cor = st ? TOOTH[st] : null
+        return (
+          <g key={r.f}
+            role={onFace ? 'button' : undefined} tabIndex={onFace ? 0 : undefined}
+            aria-label={`Face ${nomeFace(r.f, num)}${cor ? `: ${cor.label}` : ''}`}
+            onClick={onFace ? () => onFace(r.f) : undefined}
+            onKeyDown={onFace ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onFace(r.f) } } : undefined}
+            className={onFace ? 'face-reg' : undefined}>
+            <path d={r.d} fill={cor ? cor.marker : 'var(--surface)'} fillOpacity={cor ? 0.85 : 1} stroke="var(--border-strong)" strokeWidth={1.2} strokeLinejoin="round" />
+            <text x={r.lx} y={r.ly + 3} textAnchor="middle" fontSize="8" fontWeight="700" fill={cor ? '#fff' : 'var(--muted)'} style={{ pointerEvents: 'none' }}>{rotuloFace(r.f, num)}</text>
+          </g>
+        )
+      })}
+    </svg>
   )
 }

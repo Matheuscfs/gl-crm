@@ -10,7 +10,13 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'
 import { useStore, type LeadCard } from '../store'
 import { supabase } from '../lib/supabase'
-import { reguaPediatrico, reguaEstetico, reguaAdulto, ORIGENS } from '../data'
+import { reguaPediatrico, reguaEstetico, reguaAdulto, ORIGENS, type ReguaRule } from '../data'
+import { addDays, todayISO, parseISO } from '../lib/dates'
+import { useAutomacao } from '../lib/automacao'
+
+const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
+/** "16/10 (sex)" — dia da consulta na prévia da confirmação, `dias` depois de hoje. */
+const rotuloDia = (dias: number) => { const iso = addDays(todayISO(), dias); return `${iso.slice(8, 10)}/${iso.slice(5, 7)} (${DIAS_CURTOS[parseISO(iso).getDay()]})` }
 import { useEffect } from 'react'
 import CrcBoard from './crm/CrcBoard'
 
@@ -29,14 +35,14 @@ interface LeadViewProps {
 
 function LeadCardView({ c, stageIndex, onOpen, onMove, onDelete, dragging }: LeadViewProps) {
   return (
-    <div className="card-hover" style={{ background: '#fff', border: '1px solid #eceff6', borderRadius: 11, padding: '11px 12px', marginBottom: 8, boxShadow: dragging ? '0 12px 24px -10px rgba(38,60,110,.5)' : undefined }}>
+    <div className="card-hover" style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 11, padding: '11px 12px', marginBottom: 8, boxShadow: dragging ? '0 12px 24px -10px rgba(38,60,110,.5)' : undefined }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
         <div onClick={() => onOpen(c)} style={{ cursor: 'pointer', flex: 1, minWidth: 0 }}>
-          <div style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{c.name}</div>
-          <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7', margin: '2px 0 6px' }}>{c.resp}</div>
+          <div style={{ font: "700 12.5px var(--font)", color: 'var(--ink)' }}>{c.name}</div>
+          <div style={{ font: "600 11px var(--font)", color: 'var(--muted)', margin: '2px 0 6px' }}>{c.resp}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {c.origem && <span style={{ font: "700 10px 'Plus Jakarta Sans'", color: '#2f52e0', background: '#e9eeff', padding: '3px 8px', borderRadius: 20 }}>{c.origem}</span>}
-            {c.info && <span style={{ font: "700 10px 'Plus Jakarta Sans'", color: '#5b647a', background: '#eef2f9', padding: '3px 8px', borderRadius: 20 }}>{c.info}</span>}
+            {c.origem && <span style={{ font: "700 10px var(--font)", color: 'var(--primary-dark)', background: 'var(--primary-bg)', padding: '3px 8px', borderRadius: 20 }}>{c.origem}</span>}
+            {c.info && <span style={{ font: "700 10px var(--font)", color: 'var(--slate)', background: 'var(--chip-bg)', padding: '3px 8px', borderRadius: 20 }}>{c.info}</span>}
           </div>
         </div>
         <Menu
@@ -63,10 +69,10 @@ function DraggableLead(props: LeadViewProps) {
 function StageColumn({ index, stage, count, children }: { index: number; stage: string; count: number; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: `stage-${index}` })
   return (
-    <div ref={setNodeRef} style={{ width: 210, flex: 'none', background: isOver ? '#e9eeff' : '#eef2f9', borderRadius: 14, padding: '10px 10px 12px', transition: 'background 0.15s ease' }}>
+    <div ref={setNodeRef} style={{ width: 210, flex: 'none', background: isOver ? 'var(--primary-bg)' : 'var(--chip-bg)', borderRadius: 14, padding: '10px 10px 12px', transition: 'background 0.15s ease' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px 10px' }}>
-        <span style={{ font: "700 11.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>{stage}</span>
-        <span style={{ minWidth: 22, height: 20, padding: '0 6px', borderRadius: 20, background: '#fff', color: '#2f52e0', font: "800 11px 'Plus Jakarta Sans'", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{count}</span>
+        <span style={{ font: "700 11.5px var(--font)", color: 'var(--slate)' }}>{stage}</span>
+        <span style={{ minWidth: 22, height: 20, padding: '0 6px', borderRadius: 20, background: 'var(--surface)', color: 'var(--primary-dark)', font: "800 11px var(--font)", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{count}</span>
       </div>
       {children}
     </div>
@@ -75,6 +81,14 @@ function StageColumn({ index, stage, count, children }: { index: number; stage: 
 
 export default function CRM() {
   const { funil, addLead, updateLead, deleteLead, moveLead } = useStore()
+  const automacao = useAutomacao()
+  // a prévia segue a antecedência configurada em Configurações → Automação
+  const horasAntes = automacao.config.confirmacao_horas
+  const diasAntes = Math.max(1, Math.round(horasAntes / 24))
+  const quandoPrevia = diasAntes === 1 ? `amanhã, ${rotuloDia(1)}` : rotuloDia(diasAntes)
+  // o servidor só dispara a confirmação na antecedência configurada, aniversário, retorno e retoque;
+  // o resto continua sendo lembrete para a recepção enviar
+  const disparaSozinho = (r: ReguaRule) => automacao.ativo && (/lembrete/.test(r.id) ? r.when.startsWith(`${horasAntes}h`) : !/reativacao/.test(r.id))
   const { toast } = useToast()
   const [reguaPerfil, setReguaPerfil] = useState<'pediatrico' | 'estetico' | 'adulto'>('pediatrico')
   const [reguaPed, setReguaPed] = useState(reguaPediatrico)
@@ -124,16 +138,16 @@ export default function CRM() {
     if (supabase) supabase.from('regua_rules').upsert({ rule_id: id, title: cur.title, whn: cur.when, is_on: on, perfil: reguaPerfil }, { onConflict: 'rule_id' }).then(({ error }) => { if (error) console.error('[supabase] regua', error.message) })
   }
 
-  const submitLead = () => {
+  const submitLead = async () => {
     if (!form.name.trim()) return toast('Informe o nome do lead.', 'error')
+    if (saving) return
     setSaving(true)
-    setTimeout(() => {
-      addLead(form.name.trim(), form.resp.trim() || '—', form.info.trim() || 'novo contato', form.origem)
-      setSaving(false)
-      setOpen(false)
-      setForm(EMPTY_LEAD)
-      toast('Lead adicionado ao funil.')
-    }, 400)
+    const ok = await addLead(form.name.trim(), form.resp.trim() || '—', form.info.trim() || 'novo contato', form.origem)
+    setSaving(false)
+    if (!ok) return
+    setOpen(false)
+    setForm(EMPTY_LEAD)
+    toast('Lead adicionado ao funil.')
   }
 
   const openLead = (c: LeadCard) => {
@@ -180,11 +194,11 @@ export default function CRM() {
         <Button icon={<Icon name="plus" size={17} />} onClick={() => setOpen(true)}>Novo lead</Button>
       </header>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: '22px 28px', display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <div className="page-body" style={{ gap: 22 }}>
         <CrcBoard />
 
         <div>
-          <SectionTitle>Funil de leads <span style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7' }}>· arraste os cards entre etapas</span></SectionTitle>
+          <SectionTitle>Funil de leads <span style={{ font: "600 11.5px var(--font)", color: 'var(--muted)' }}>· arraste os cards entre etapas</span></SectionTitle>
           <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
             <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6 }}>
               {funil.map((col, i) => (
@@ -193,7 +207,7 @@ export default function CRM() {
                     <DraggableLead key={c.id} c={c} stageIndex={i} onOpen={openLead} onMove={moveLead} onDelete={setConfirmLead} />
                   ))}
                   {col.cards.length === 0 && (
-                    <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#aeb7c8', textAlign: 'center', padding: '14px 0' }}>Solte um card aqui</div>
+                    <div style={{ font: "600 11px var(--font)", color: 'var(--muted)', textAlign: 'center', padding: '14px 0' }}>Solte um card aqui</div>
                   )}
                 </StageColumn>
               ))}
@@ -202,7 +216,7 @@ export default function CRM() {
           </DndContext>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 22 }}>
+        <div className="split-aside" style={{ gap: 22, '--aside': '340px' } as React.CSSProperties}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
               <SectionTitle>Régua de comunicação</SectionTitle>
@@ -212,15 +226,21 @@ export default function CRM() {
                 <button className={`seg-item${reguaPerfil === 'adulto' ? ' active' : ''}`} onClick={() => setReguaPerfil('adulto')}>Adulto</button>
               </div>
             </div>
+            {/* sem a automação ligada, nada sai sozinho: a tela diz isso em vez de prometer */}
+            <p className={`regua-modo${automacao.ativo ? ' auto' : ''}`}>
+              {automacao.ativo
+                ? 'Envio automático ligado: as mensagens marcadas saem pelo WhatsApp oficial da clínica no momento indicado.'
+                : 'Envio manual: o sistema monta a mensagem e alguém envia pelo botão de WhatsApp (Início, Agenda, Financeiro). Para disparar sozinho, ligue em Configurações → Automação.'}
+            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {regua.map((r) => (
-                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', borderRadius: 12, border: `1px solid ${r.on ? '#cdd8ff' : '#eceff6'}`, background: r.on ? '#eef2ff' : '#fff' }}>
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', borderRadius: 12, border: `1px solid ${r.on ? 'var(--primary-border)' : 'var(--line)'}`, background: r.on ? 'var(--primary-bg)' : 'var(--surface)' }}>
                   <button className={`switch${r.on ? ' on' : ''}`} onClick={() => toggle(r.id)} aria-pressed={r.on}><span className="switch-knob" /></button>
                   <div style={{ flex: 1 }}>
-                    <div style={{ font: "700 13px 'Plus Jakarta Sans'", color: '#26324a' }}>{r.title}</div>
-                    <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Dispara {r.when}</div>
+                    <div style={{ font: "700 13px var(--font)", color: 'var(--ink)' }}>{r.title}</div>
+                    <div style={{ font: "600 11.5px var(--font)", color: 'var(--muted)' }}>{disparaSozinho(r) ? 'Dispara' : 'Lembrete'} {r.when}</div>
                   </div>
-                  <button className="chip" onClick={() => openMsg(r.id, r.title, r.when)} style={{ background: 'transparent', font: "700 11.5px 'Plus Jakarta Sans'", color: '#2f52e0', padding: '4px 6px', borderRadius: 8 }}>Editar mensagem</button>
+                  <button className="chip" onClick={() => openMsg(r.id, r.title, r.when)} style={{ background: 'transparent', font: "700 11.5px var(--font)", color: 'var(--primary-dark)', padding: '4px 6px', borderRadius: 8 }}>Editar mensagem</button>
                 </div>
               ))}
             </div>
@@ -228,21 +248,21 @@ export default function CRM() {
 
           <div>
             <SectionTitle>Preview · WhatsApp</SectionTitle>
-            <div style={{ border: '1px solid #d7ddea', borderRadius: 22, overflow: 'hidden', background: '#e7ded6', boxShadow: '0 10px 30px -12px rgba(38,60,110,.3)' }}>
-              <div style={{ background: '#3f6bf5', padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 11 }}>
-                <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#fff', color: '#c2478a', display: 'flex', alignItems: 'center', justifyContent: 'center', font: "italic 800 14px Georgia, serif" }}>GL</div>
+            <div style={{ border: '1px solid var(--border-strong)', borderRadius: 22, overflow: 'hidden', background: '#e7ded6', boxShadow: '0 10px 30px -12px rgba(38,60,110,.3)' }}>
+              <div style={{ background: 'var(--primary)', padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 11 }}>
+                <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--surface)', color: 'var(--brand-pink)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: "italic 800 14px Georgia, serif" }}>GL</div>
                 <div>
-                  <div style={{ font: "800 13.5px 'Plus Jakarta Sans'", color: '#fff' }}>Gabriela Lorenzi</div>
-                  <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#d7e0ff' }}>Cirurgiã Dentista</div>
+                  <div style={{ font: "800 13.5px var(--font)", color: '#fff' }}>Gabriela Lorenzi</div>
+                  <div style={{ font: "600 11px var(--font)", color: '#d7e0ff' }}>Cirurgiã Dentista</div>
                 </div>
               </div>
               <div style={{ padding: '18px 14px', minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: 10 }}>
-                <div style={{ alignSelf: 'center', background: '#fff', color: '#5b647a', font: "700 10px 'Plus Jakarta Sans'", padding: '4px 11px', borderRadius: 8 }}>Lembrete 48h antes</div>
+                <div style={{ alignSelf: 'center', background: 'var(--surface)', color: 'var(--slate)', font: "700 10px var(--font)", padding: '4px 11px', borderRadius: 8 }}>Lembrete {horasAntes}h antes</div>
                 <div style={{ alignSelf: 'flex-end', maxWidth: '82%', background: '#d9f2ec', borderRadius: '14px 14px 4px 14px', padding: '10px 13px', boxShadow: '0 1px 1px rgba(0,0,0,.06)' }}>
-                  <div style={{ font: "500 12.5px/1.5 'Plus Jakarta Sans'", color: '#26324a' }}>
-                    Oi, Ana Paula! 😊 Passando para lembrar que a <b>Sofia</b> tem consulta com a Dra. Gabriela Lorenzi <b>amanhã, 19/07 (sex) às 09:00</b>. Podemos confirmar? Responda <b>SIM</b> para confirmar ou <b>REMARCAR</b> se precisar mudar. 🦷
+                  <div style={{ font: "500 12.5px/1.5 var(--font)", color: 'var(--ink)' }}>
+                    Oi, [responsável]! 😊 Passando para lembrar que [paciente] tem consulta com a Dra. Gabriela Lorenzi <b>{quandoPrevia} às 09:00</b>. Podemos confirmar? Responda <b>1</b> para confirmar ou <b>2</b> para remarcar. 🦷
                   </div>
-                  <div style={{ textAlign: 'right', font: "600 10px 'Plus Jakarta Sans'", color: '#7fb8ac', marginTop: 4 }}>08:32 ✓✓</div>
+                  <div style={{ textAlign: 'right', font: "600 10px var(--font)", color: '#7fb8ac', marginTop: 4 }}>08:32 ✓✓</div>
                 </div>
               </div>
             </div>
@@ -261,7 +281,7 @@ export default function CRM() {
 
       {/* Editar lead */}
       <Modal open={!!edit} onClose={() => setEdit(null)} title="Editar lead" width={420}
-        footer={<><Button variant="ghost" className="btn-danger" onClick={() => { if (edit) { setConfirmLead(edit); setEdit(null) } }}>Excluir</Button><Button onClick={saveLead}>Salvar</Button></>}>
+        footer={<><Button variant="danger" onClick={() => { if (edit) { setConfirmLead(edit); setEdit(null) } }}>Excluir</Button><Button onClick={saveLead}>Salvar</Button></>}>
         {edit && (
           <>
             <Field label="Nome da criança"><TextInput value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
@@ -277,10 +297,10 @@ export default function CRM() {
       </Modal>
 
       {/* Editar modelo de mensagem */}
-      <Modal open={!!msg} onClose={() => setMsg(null)} title={msg?.title ?? ''} subtitle={`Dispara ${msg?.when ?? ''}`} width={460}
+      <Modal open={!!msg} onClose={() => setMsg(null)} title={msg?.title ?? ''} subtitle={`${automacao.ativo ? 'Dispara' : 'Lembrete'} ${msg?.when ?? ''}`} width={460}
         footer={<><Button variant="outline" onClick={() => setMsg(null)}>Cancelar</Button><Button onClick={saveMsg}>Salvar modelo</Button></>}>
         <Field label="Mensagem (WhatsApp)"><Textarea value={msgText} onChange={(e) => setMsgText(e.target.value)} /></Field>
-        <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Variáveis: {'{crianca}'}, {'{responsavel}'}, {'{data}'}.</div>
+        <div style={{ font: "600 11px var(--font)", color: 'var(--muted)' }}>Variáveis: {'{crianca}'}, {'{responsavel}'}, {'{data}'}.</div>
       </Modal>
 
       <ConfirmDialog open={!!confirmLead} onClose={() => setConfirmLead(null)} onConfirm={() => { if (confirmLead) { deleteLead(confirmLead.id); toast('Lead excluído.') } }}

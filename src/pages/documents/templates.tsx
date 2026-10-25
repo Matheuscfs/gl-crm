@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Section, F, Check, YesNo, Para, SignDate, type DocCtx } from './DocKit'
-import { historico, TOOTH, isSeedPatient, type ToothState } from '../../data'
+import { fmtHour } from '../../data'
+import { historico, TOOTH, type ToothState } from '../../data'
 
 const DEMO_ADULT: Record<string, unknown> = {
   queixa: 'Harmonização — linhas de expressão', doenca: false, medicamentos: false, alergia: false,
@@ -23,17 +24,17 @@ const DEMO_PED: Record<string, unknown> = {
   gestacao: 'Normal', nascimento: 'Cesárea', habitos: ['Sucção de dedo'], doces: 'Às vezes', refri: 'Nunca', amamentacao: 'Materna', mamadeira_noturna: false, comportamento: 'Colaboradora',
 }
 
-const G2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 22px' }
-const G3: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '2px 18px' }
+const G2: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '2px 22px' }
+const G3: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '2px 18px' }
 const ROW: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: '0 6px', alignItems: 'baseline' }
 
 /* ---------- 1. Prontuário / Anamnese Pediátrica ---------- */
 function prontuarioPediatrico(b: boolean, ctx: DocCtx = {}): ReactNode {
-  const A = { ...DEMO_PED, ...(ctx.anamnese ?? {}) } as Record<string, unknown>
+  const A = { ...(ctx.demo ? DEMO_PED : {}), ...(ctx.anamnese ?? {}) } as Record<string, unknown>
   const habitos = Array.isArray(A.habitos) ? (A.habitos as string[]) : []
-  const nome = ctx.patientName ?? 'Sofia Ribeiro Martins'
-  const nasc = ctx.birthdate ? brDate(ctx.birthdate) : '12/03/2018'
-  const sexF = ctx.sex ? ctx.sex === 'Feminino' : true
+  const nome = ctx.patientName ?? ''
+  const nasc = ctx.birthdate ? brDate(ctx.birthdate) : ''
+  const sexF = ctx.sex === 'Feminino'
   const sexM = ctx.sex === 'Masculino'
   return (
     <>
@@ -102,9 +103,9 @@ function prontuarioPediatrico(b: boolean, ctx: DocCtx = {}): ReactNode {
 
 /* ---------- 2. Prontuário / Anamnese Adulto ---------- */
 function prontuarioAdulto(b: boolean, ctx: DocCtx = {}): ReactNode {
-  const A = { ...DEMO_ADULT, ...(ctx.anamnese ?? {}) } as Record<string, unknown>
-  const nome = ctx.patientName ?? 'Camila Nogueira'
-  const sexF = ctx.sex ? ctx.sex === 'Feminino' : true
+  const A = { ...(ctx.demo ? DEMO_ADULT : {}), ...(ctx.anamnese ?? {}) } as Record<string, unknown>
+  const nome = ctx.patientName ?? ''
+  const sexF = ctx.sex === 'Feminino'
   const sexM = ctx.sex === 'Masculino'
   return (
     <>
@@ -159,7 +160,7 @@ const PERM_INF = Array.from({ length: 8 }, (_, i) => String(48 - i)).concat(Arra
 
 function annotationRows(list: string[], teethMap: Record<number, string>) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 22px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '2px 22px' }}>
       {list.map((n) => {
         const cond = n.split('/').map((x) => teethMap[Number(x)]).find(Boolean)
         return (
@@ -174,18 +175,21 @@ function annotationRows(list: string[], teethMap: Record<number, string>) {
 }
 function odontograma(b: boolean, ctx: DocCtx = {}, permanente = false): ReactNode {
   const teethMap: Record<number, string> = {}
-  if (!b) (ctx.teeth ?? []).forEach((t) => { if (t.state !== 'higido') teethMap[t.num] = TOOTH[t.state as ToothState]?.label ?? '' })
+  // condição do dente + faces anotadas ("Cárie (O, M)")
+  if (!b) (ctx.teeth ?? []).forEach((t) => { if (t.state !== 'higido' || t.faces) teethMap[t.num] = t.faces || (TOOTH[t.state as ToothState]?.label ?? '') })
+  const lay = ctx.dentLayout
   return (
     <>
       <div style={{ textAlign: 'center', fontStyle: 'italic', color: '#777', fontSize: 11, marginBottom: 8 }}>
-        {permanente ? 'Dentição permanente (18–28 / 48–38)' : 'Dentição decídua/mista'}
+        {lay ? lay.titulo : permanente ? 'Dentição permanente (18–28 / 48–38)' : 'Dentição decídua/mista'}
       </div>
+      {ctx.patientName && !b && <F label="Paciente" value={ctx.patientName} blank={b} />}
       <Section>Arcada superior</Section>
-      {annotationRows(permanente ? PERM_SUP : MIX_SUP, teethMap)}
+      {annotationRows(lay ? lay.sup : permanente ? PERM_SUP : MIX_SUP, teethMap)}
       <Section>Arcada inferior</Section>
-      {annotationRows(permanente ? PERM_INF : MIX_INF, teethMap)}
+      {annotationRows(lay ? lay.inf : permanente ? PERM_INF : MIX_INF, teethMap)}
       <div style={{ marginTop: 14, fontSize: 11, color: '#777' }}>
-        Legenda: presente · ausente · em erupção · cariado · restaurado · tratado · extraído.
+        Faces: M mesial · D distal · O oclusal / I incisal · V vestibular · L lingual / P palatina.
       </div>
     </>
   )
@@ -195,7 +199,7 @@ function odontograma(b: boolean, ctx: DocCtx = {}, permanente = false): ReactNod
 function tratamentos(b: boolean, ctx: DocCtx = {}): ReactNode {
   const real = ctx.treatments && ctx.treatments.length
     ? ctx.treatments
-    : isSeedPatient(ctx.patientName) ? historico.map((h) => ({ date: h.date, proc: h.proc })) : []
+    : ctx.demo ? historico.map((h) => ({ date: h.date, proc: h.proc })) : []
   const rows = b || real.length === 0 ? Array.from({ length: 14 }, () => ({ date: '', proc: '' })) : real
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -223,7 +227,7 @@ function fichaEvolucao(b: boolean, ctx: DocCtx = {}): ReactNode {
     ? ctx.evolucoes
     : ctx.treatments && ctx.treatments.length
       ? ctx.treatments
-      : isSeedPatient(ctx.patientName) ? historico.map((h) => ({ date: h.date, proc: h.proc, prof: h.prof, note: h.note })) : []
+      : ctx.demo ? historico.map((h) => ({ date: h.date, proc: h.proc, prof: h.prof, note: h.note })) : []
   // sem evoluções registradas, o "preenchido" sai com linhas em branco para preencher à mão
   const rows = b || real.length === 0 ? Array.from({ length: 12 }, () => ({ date: '', proc: '', prof: '', note: '' })) : real
   const th: React.CSSProperties = { textAlign: 'left', borderBottom: '1.5px solid #555', padding: '6px 8px' }
@@ -265,18 +269,18 @@ function tcle(b: boolean, ctx: DocCtx = {}): ReactNode {
   return (
     <>
       <div style={G2}>
-        <F label="Nome" value={ctx.patientName ?? 'Sofia Ribeiro Martins'} blank={b} />
+        <F label="Nome" value={ctx.patientName ?? ''} blank={b} />
         <F label="CPF" value={ctx.cpf ?? ''} blank={b} />
       </div>
-      <Para>Declaro que fui devidamente esclarecido(a) pela profissional a respeito de:</Para>
+      <Para>Declaro que fui devidamente esclarecido(a) pela profissional a respeito de (marque cada item):</Para>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 4, marginLeft: 4 }}>
-        <Check label="Diagnóstico clínico" checked blank={b} />
-        <Check label="Objetivos do tratamento" checked blank={b} />
-        <Check label="Benefícios esperados" checked blank={b} />
-        <Check label="Riscos e complicações possíveis" checked blank={b} />
-        <Check label="Necessidade de colaboração do paciente/responsável" checked blank={b} />
-        <Check label="Alternativas terapêuticas" checked blank={b} />
-        <Check label="Possibilidade de alterações no plano de tratamento" checked blank={b} />
+        <Check label="Diagnóstico clínico" blank={b} />
+        <Check label="Objetivos do tratamento" blank={b} />
+        <Check label="Benefícios esperados" blank={b} />
+        <Check label="Riscos e complicações possíveis" blank={b} />
+        <Check label="Necessidade de colaboração do paciente/responsável" blank={b} />
+        <Check label="Alternativas terapêuticas" blank={b} />
+        <Check label="Possibilidade de alterações no plano de tratamento" blank={b} />
       </div>
       <Para>
         Estou ciente de que a Odontologia não é uma ciência exata e que <b>não há garantia de resultado</b>; de que podem
@@ -294,15 +298,15 @@ function autorizacaoImagem(b: boolean, ctx: DocCtx = {}): ReactNode {
   return (
     <>
       <div style={G2}>
-        <F label="Nome" value={ctx.patientName ?? 'Sofia Ribeiro Martins'} blank={b} />
+        <F label="Nome" value={ctx.patientName ?? ''} blank={b} />
         <F label="CPF" value={ctx.cpf ?? ''} blank={b} />
       </div>
       <Para>Autorizo o uso de imagens (fotografias e/ou vídeos) do tratamento para as seguintes finalidades:</Para>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginLeft: 4 }}>
-        <Check label="Registro clínico" checked blank={b} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, marginLeft: 4 }}>
+        <Check label="Registro clínico" blank={b} />
         <Check label="Discussões científicas e aulas" blank={b} />
         <Check label="Publicações em artigos" blank={b} />
-        <Check label="Redes sociais profissionais" checked blank={b} />
+        <Check label="Redes sociais profissionais" blank={b} />
         <Check label="Site profissional" blank={b} />
         <Check label="Material educativo" blank={b} />
       </div>
@@ -311,7 +315,7 @@ function autorizacaoImagem(b: boolean, ctx: DocCtx = {}): ReactNode {
         revogada a qualquer momento mediante solicitação por escrito.
       </Para>
       <div style={{ ...ROW, marginTop: 8, fontSize: 13 }}>
-        <Check label="Autorizo" checked blank={b} /><Check label="Não autorizo" blank={b} />
+        <Check label="Autorizo" blank={b} /><Check label="Não autorizo" blank={b} />
       </div>
       <SignDate role="Paciente ou responsável" blank={b} />
     </>
@@ -325,27 +329,110 @@ function autorizacaoMenor(b: boolean, ctx: DocCtx = {}): ReactNode {
     <>
       <Section>Responsável</Section>
       <div style={G2}>
-        <F label="Nome do responsável" value={nomeResp(ctx.resp) || 'Ana Paula Martins'} blank={b} />
+        <F label="Nome do responsável" value={nomeResp(ctx.resp)} blank={b} />
         <F label="CPF" value={ctx.respCpf ?? ''} blank={b} />
       </div>
       <div style={{ ...ROW, marginTop: 4 }}>
         <span className="doc-field-label">Qualidade:</span>
-        <Check label="Pai" checked={rel === 'pai'} blank={b} /><Check label="Mãe" checked={rel === 'mãe' || !rel} blank={b} /><Check label="Responsável legal" blank={b} />
+        <Check label="Pai" checked={rel === 'pai'} blank={b} /><Check label="Mãe" checked={rel === 'mãe'} blank={b} /><Check label="Responsável legal" blank={b} />
       </div>
       <Section>Menor</Section>
       <div style={G2}>
-        <F label="Nome do menor" value={ctx.patientName ?? 'Sofia Ribeiro Martins'} blank={b} />
+        <F label="Nome do menor" value={ctx.patientName ?? ''} blank={b} />
         <F label="Data de nascimento" value={ctx.birthdate ? brDate(ctx.birthdate) : ''} blank={b} />
       </div>
       <Para>Autorizo a realização dos seguintes procedimentos no(a) menor sob minha responsabilidade:</Para>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginLeft: 4 }}>
-        <Check label="Consulta" checked blank={b} /><Check label="Exame clínico" checked blank={b} />
-        <Check label="Radiografias" checked blank={b} /><Check label="Profilaxia" checked blank={b} />
-        <Check label="Aplicação tópica de flúor" checked blank={b} /><Check label="Selantes" checked blank={b} />
-        <Check label="Restaurações" checked blank={b} /><Check label="Anestesia local" checked blank={b} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, marginLeft: 4 }}>
+        <Check label="Consulta" blank={b} /><Check label="Exame clínico" blank={b} />
+        <Check label="Radiografias" blank={b} /><Check label="Profilaxia" blank={b} />
+        <Check label="Aplicação tópica de flúor" blank={b} /><Check label="Selantes" blank={b} />
+        <Check label="Restaurações" blank={b} /><Check label="Anestesia local" blank={b} />
         <Check label="Outros, mediante informação prévia" blank={b} />
       </div>
       <SignDate role="Responsável" blank={b} />
+    </>
+  )
+}
+
+
+/* ---------- 8. Receituário (simples ou de controle especial, 2 vias) ---------- */
+function receituario(b: boolean, ctx: DocCtx = {}): ReactNode {
+  const r = ctx.emissao?.receita
+  const itens = !b && r?.itens?.length ? r.itens : Array.from({ length: 3 }, () => ({ med: '', qtd: '', posologia: '' }))
+  const via = (n: number) => (
+    <div key={n} style={n > 1 ? { marginTop: 22, paddingTop: 16, borderTop: '1.5px dashed #999' } : undefined}>
+      {r?.controleEspecial && <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 700 }}>{n}ª via — {n === 1 ? 'farmácia' : 'paciente'}</div>}
+      <F label="Paciente" value={ctx.patientName ?? ''} blank={b} />
+      <F label="Uso" value={r?.uso ?? ''} blank={b} />
+      <ol style={{ margin: '12px 0 0', paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {itens.map((it, i) => (
+          <li key={i} style={{ fontSize: 12.5 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+              <b className="doc-field-value" style={{ flex: 1 }}>{b ? '' : it.med}</b>
+              <span className="doc-field-value" style={{ minWidth: 110, textAlign: 'right' }}>{b ? '' : it.qtd}</span>
+            </div>
+            <div className="doc-field-value" style={{ marginTop: 4, minHeight: 16 }}>{b ? '' : it.posologia}</div>
+          </li>
+        ))}
+      </ol>
+      {r?.controleEspecial && (
+        <>
+          <Section>Identificação do comprador</Section>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '2px 22px' }}>
+            <F label="Nome" blank /><F label="RG" blank /><F label="Endereço" blank /><F label="Telefone" blank />
+          </div>
+          <Section>Identificação do fornecedor</Section>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '2px 22px' }}><F label="Farmacêutico" blank /><F label="Data" blank /></div>
+        </>
+      )}
+      <SignDate role="Cirurgiã Dentista · assinatura e carimbo" blank={b} date={ctx.emissao?.data} />
+    </div>
+  )
+  return <>{via(1)}{r?.controleEspecial && via(2)}</>
+}
+
+/* ---------- 9. Atestado odontológico ---------- */
+function atestado(b: boolean, ctx: DocCtx = {}): ReactNode {
+  const a = ctx.emissao?.atestado
+  const dataBr = brDate(ctx.emissao?.data)
+  const horas = a ? `das ${fmtHour(Number(a.inicio))} às ${fmtHour(Number(a.fim))}` : ''
+  return (
+    <>
+      <Para>
+        Atesto, para os devidos fins{a?.finalidade && !b ? ` (${a.finalidade})` : ''}, que{' '}
+        <b className="doc-field-value" style={{ display: 'inline-block', minWidth: 220 }}>{b ? '' : ctx.patientName}</b>
+        {ctx.cpf && !b ? <>, CPF {ctx.cpf},</> : ''} esteve sob meus cuidados profissionais no dia{' '}
+        <span className="doc-field-value" style={{ display: 'inline-block', minWidth: 90 }}>{b ? '' : dataBr}</span>{' '}
+        <span className="doc-field-value" style={{ display: 'inline-block', minWidth: 120 }}>{b ? '' : horas}</span>
+        {(b || (a && a.dias > 0)) ? (
+          <>, necessitando de <span className="doc-field-value" style={{ display: 'inline-block', minWidth: 30, textAlign: 'center' }}>{b ? '' : a!.dias}</span>{' '}
+          dia(s) de afastamento de suas atividades a partir desta data.</>
+        ) : '.'}
+      </Para>
+      {(b || (a?.cid && a.cidAutorizado)) && (
+        <F label="CID (incluído a pedido e com autorização do paciente)" value={a?.cid ?? ''} blank={b} />
+      )}
+      <SignDate role="Cirurgiã Dentista · assinatura e carimbo" blank={b} date={ctx.emissao?.data} />
+    </>
+  )
+}
+
+/* ---------- 10. Declaração de comparecimento ---------- */
+function declaracao(b: boolean, ctx: DocCtx = {}): ReactNode {
+  const d = ctx.emissao?.declaracao
+  const dataBr = brDate(ctx.emissao?.data)
+  const horas = d ? `das ${fmtHour(Number(d.inicio))} às ${fmtHour(Number(d.fim))}` : ''
+  const acompanhante = d?.para === 'acompanhante'
+  return (
+    <>
+      <Para>
+        Declaro, para os devidos fins, que{' '}
+        <b className="doc-field-value" style={{ display: 'inline-block', minWidth: 220 }}>{b ? '' : acompanhante ? d?.acompanhante : ctx.patientName}</b>{' '}
+        {acompanhante && !b ? <>esteve presente neste consultório acompanhando o(a) paciente <b>{ctx.patientName}</b></> : 'compareceu a este consultório para atendimento odontológico'}{' '}
+        no dia <span className="doc-field-value" style={{ display: 'inline-block', minWidth: 90 }}>{b ? '' : dataBr}</span>,{' '}
+        <span className="doc-field-value" style={{ display: 'inline-block', minWidth: 120 }}>{b ? '' : horas}</span>.
+      </Para>
+      <SignDate role="Cirurgiã Dentista · assinatura e carimbo" blank={b} date={ctx.emissao?.data} />
     </>
   )
 }
@@ -356,6 +443,8 @@ export interface DocDef {
   // 'adulto' abrange documentos de adulto (usados tanto por perfil Adulto quanto Estético)
   perfil: 'pediatrico' | 'adulto' | 'ambos'
   node: (blank: boolean, ctx: DocCtx) => ReactNode
+  /** Documento emitido na hora: abre um formulário antes de gerar. */
+  emitir?: 'receita' | 'atestado' | 'declaracao'
 }
 
 export const DOCUMENTS: DocDef[] = [
@@ -368,6 +457,9 @@ export const DOCUMENTS: DocDef[] = [
   { key: 'tcle', title: 'Termo de Consentimento (TCLE)', perfil: 'ambos', node: tcle },
   { key: 'img', title: 'Autorização de Uso de Imagem', perfil: 'ambos', node: autorizacaoImagem },
   { key: 'menor', title: 'Autorização de Atendimento de Menor', perfil: 'pediatrico', node: autorizacaoMenor },
+  { key: 'receita', title: 'Receituário', perfil: 'ambos', node: receituario, emitir: 'receita' },
+  { key: 'atestado', title: 'Atestado Odontológico', perfil: 'ambos', node: atestado, emitir: 'atestado' },
+  { key: 'declaracao', title: 'Declaração de Comparecimento', perfil: 'ambos', node: declaracao, emitir: 'declaracao' },
 ]
 
 // "Pacote de admissão" por grupo de documentos (pediátrico x adulto)

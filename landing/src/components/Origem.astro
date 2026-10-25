@@ -1,0 +1,35 @@
+---
+import Icon from './Icon.astro'
+---
+<section class="sec" id="conteudo" aria-labelledby="origem-tit">
+  <div class="wrap">
+    <span class="eyebrow" data-reveal>Por que é diferente</span>
+    <p class="origem-txt" id="origem-tit" data-reveal style="--d: 0.08s">
+      Nasceu numa cadeira de dentista, não numa sala de reunião.{' '}
+      <span class="t2">Cada tela foi desenhada na rotina real da recepção e do atendimento — de criança de
+      4 anos a harmonização facial.</span>
+    </p>
+    <div class="fatos">
+      <div class="fato" data-reveal style="--d: 0.05s">
+        <span class="fato-ico"><Icon name="baby" size={22} /></span>
+        <b>Odontopediatria de verdade</b>
+        <p>Odontograma com dentição decídua, mista e permanente, por face, e prevenção: risco de cárie, placa, flúor e selantes.</p>
+      </div>
+      <div class="fato" data-reveal style="--d: 0.12s">
+        <span class="fato-ico"><Icon name="wa" size={22} /></span>
+        <b>WhatsApp oficial</b>
+        <p>Mensagens pela API oficial da Meta, saindo do servidor — não dependem do celular da recepção ligado.</p>
+      </div>
+      <div class="fato" data-reveal style="--d: 0.19s">
+        <span class="fato-ico"><Icon name="receipt" size={22} /></span>
+        <b>PIX, boleto e Receita Saúde</b>
+        <p>Cobrança com baixa automática, recibo na hora e o lançamento do Receita Saúde e do Carnê-Leão pronto.</p>
+      </div>
+      <div class="fato" data-reveal style="--d: 0.26s">
+        <span class="fato-ico"><Icon name="devices" size={22} /></span>
+        <b>Em qualquer tela</b>
+        <p>Computador, tablet da recepção e celular. Instala como app, com tema claro e escuro.</p>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Dropdown } from '../components/Menu'
-import { CountUp } from '../components/ui'
+import { StatCard } from '../components/ui'
 import { EmptyState } from '../components/States'
 import { useStore, matchFicha } from '../store'
 import { supabase } from '../lib/supabase'
 import { parseISO, todayISO } from '../lib/dates'
 import { dayRange } from '../lib/horarios'
 import { brMoney, parseMoney } from '../lib/money'
-import { STATUS, type ApptStatus, type ApptKind } from '../data'
+import { STATUS, ORIGENS, type ApptStatus, type ApptKind } from '../data'
 
 const PERIODOS = ['Este mês', 'Últimos 30 dias', 'Últimos 90 dias', 'Tudo']
 const DAY_MS = 86400000
@@ -19,8 +19,8 @@ const brToIso = (s: string) => {
 }
 
 const PERFIL_KIND: Record<string, { label: string; color: string }> = {
-  ped: { label: 'Pediátrico', color: '#3f6bf5' },
-  est: { label: 'Estético', color: '#c2478a' },
+  ped: { label: 'Pediátrico', color: 'var(--primary)' },
+  est: { label: 'Estético', color: 'var(--brand-pink)' },
   adt: { label: 'Adulto', color: '#0f766e' },
 }
 
@@ -138,7 +138,8 @@ export default function Relatorios() {
   const origens = useMemo(() => {
     const count = new Map<string, number>()
     funil.flatMap((c) => c.cards).forEach((c) => {
-      const o = (c.origem || '').trim() || (c.info || '').split('·')[0].trim()
+      const antigo = (c.info || '').split('·')[0].trim()
+      const o = (c.origem || '').trim() || (ORIGENS.includes(antigo) ? antigo : '')
       if (o) count.set(o, (count.get(o) ?? 0) + 1)
     })
     patients.forEach((p) => {
@@ -157,30 +158,30 @@ export default function Relatorios() {
         <Dropdown label="Período" value={periodo} options={PERIODOS} onChange={setPeriodo} active />
       </header>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div className="page-body">
         {/* KPIs */}
-        <div className="stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-          <Kpi label="Atendimentos concluídos" value={String(stats.concluidos)} sub={`de ${stats.total} no período`} tone="#16a34a" />
-          <Kpi label="Taxa de faltas" value={`${stats.taxaFaltas}%`} sub={`${stats.faltas} falta${stats.faltas === 1 ? '' : 's'}`} tone={stats.taxaFaltas > 15 ? '#dc2626' : '#d97706'} />
-          <Kpi label="Ocupação da agenda" value={`${stats.ocupacao}%`} sub="horas agendadas ÷ expediente" tone="#3f6bf5" />
-          <Kpi label="Faturamento recebido" value={brMoney(stats.faturado)} sub="parcelas + receitas pagas" tone="#3f6bf5" />
+        <div className="stagger grid-kpi">
+          <StatCard label="Atendimentos concluídos" value={String(stats.concluidos)} sub={`de ${stats.total} no período`} tone="#16a34a" />
+          <StatCard label="Taxa de faltas" value={`${stats.taxaFaltas}%`} sub={`${stats.faltas} falta${stats.faltas === 1 ? '' : 's'}`} tone={stats.taxaFaltas > 15 ? '#dc2626' : '#d97706'} />
+          <StatCard label="Ocupação da agenda" value={`${stats.ocupacao}%`} sub="horas agendadas ÷ expediente" tone="var(--primary)" />
+          <StatCard label="Faturamento recebido" value={brMoney(stats.faturado)} sub="parcelas + receitas pagas" tone="var(--primary)" />
         </div>
 
-        <div style={{ flex: 1, minHeight: 320, display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 20 }}>
+        <div className="split" style={{ flex: 1, minHeight: 320, ['--main' as string]: '1.4fr' }}>
           {/* Procedimentos mais realizados */}
           <div className="card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ font: "800 15px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 2 }}>Procedimentos mais realizados</div>
-            <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7', marginBottom: 16 }}>agendados e concluídos no período</div>
+            <div style={{ font: "800 15px var(--font)", color: 'var(--ink)', marginBottom: 2 }}>Procedimentos mais realizados</div>
+            <div style={{ font: "600 11.5px var(--font)", color: 'var(--muted)', marginBottom: 16 }}>agendados e concluídos no período</div>
             {topProcs.sorted.length === 0 && <EmptyState icon="chart" title="Sem dados no período" desc="Nenhum atendimento registrado neste período." />}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {topProcs.sorted.map(([proc, n]) => (
                 <div key={proc}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 5 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', font: "700 12.5px var(--font)", color: 'var(--ink)', marginBottom: 5 }}>
                     <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{proc}</span>
                     <span className="tnum">{n}</span>
                   </div>
-                  <div style={{ height: 8, borderRadius: 6, background: '#eef1f1' }}>
-                    <div style={{ width: `${(n / topProcs.max) * 100}%`, height: '100%', borderRadius: 6, background: '#3f6bf5' }} />
+                  <div style={{ height: 8, borderRadius: 6, background: 'var(--chip-bg)' }}>
+                    <div style={{ width: `${(n / topProcs.max) * 100}%`, height: '100%', borderRadius: 6, background: 'var(--primary)' }} />
                   </div>
                 </div>
               ))}
@@ -190,7 +191,7 @@ export default function Relatorios() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minHeight: 0 }}>
             {/* Por status */}
             <div className="card" style={{ padding: '16px 20px' }}>
-              <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 12 }}>Atendimentos por status</div>
+              <div style={{ font: "800 14px var(--font)", color: 'var(--ink)', marginBottom: 12 }}>Atendimentos por status</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {porStatus.order.map((s) => {
                   const n = evPeriodo.filter((e) => e.status === s).length
@@ -198,22 +199,22 @@ export default function Relatorios() {
                   return (
                     <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                       <span style={{ width: 9, height: 9, borderRadius: 3, flex: 'none', background: STATUS[s].dot }} />
-                      <span style={{ flex: 1, font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>{STATUS[s].label}</span>
-                      <div style={{ width: 110, height: 7, borderRadius: 6, background: '#eef1f1' }}>
+                      <span style={{ flex: 1, font: "600 12.5px var(--font)", color: 'var(--slate)' }}>{STATUS[s].label}</span>
+                      <div style={{ width: 110, height: 7, borderRadius: 6, background: 'var(--chip-bg)' }}>
                         <div style={{ width: `${(n / porStatus.max) * 100}%`, height: '100%', borderRadius: 6, background: STATUS[s].dot }} />
                       </div>
-                      <span className="tnum" style={{ width: 26, textAlign: 'right', font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{n}</span>
+                      <span className="tnum" style={{ width: 26, textAlign: 'right', font: "700 12.5px var(--font)", color: 'var(--ink)' }}>{n}</span>
                     </div>
                   )
                 })}
-                {evPeriodo.length === 0 && <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Sem atendimentos no período.</div>}
+                {evPeriodo.length === 0 && <div style={{ font: "600 12px var(--font)", color: 'var(--muted)' }}>Sem atendimentos no período.</div>}
               </div>
             </div>
 
             {/* Por perfil */}
             <div className="card" style={{ padding: '16px 20px', flex: 1 }}>
-              <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 12 }}>Atendimentos por perfil</div>
-              <div style={{ display: 'flex', height: 10, borderRadius: 6, overflow: 'hidden', background: '#eef1f1', marginBottom: 12 }}>
+              <div style={{ font: "800 14px var(--font)", color: 'var(--ink)', marginBottom: 12 }}>Atendimentos por perfil</div>
+              <div style={{ display: 'flex', height: 10, borderRadius: 6, overflow: 'hidden', background: 'var(--chip-bg)', marginBottom: 12 }}>
                 {porPerfil.counts.map(({ k, n }) => n > 0 && (
                   <div key={k} style={{ width: `${(n / porPerfil.tot) * 100}%`, background: PERFIL_KIND[k].color }} />
                 ))}
@@ -222,8 +223,8 @@ export default function Relatorios() {
                 {porPerfil.counts.map(({ k, n }) => (
                   <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ width: 9, height: 9, borderRadius: 3, background: PERFIL_KIND[k].color }} />
-                    <span style={{ flex: 1, font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>{PERFIL_KIND[k].label}</span>
-                    <span className="tnum" style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{n}</span>
+                    <span style={{ flex: 1, font: "600 12.5px var(--font)", color: 'var(--slate)' }}>{PERFIL_KIND[k].label}</span>
+                    <span className="tnum" style={{ font: "700 12.5px var(--font)", color: 'var(--ink)' }}>{n}</span>
                   </div>
                 ))}
               </div>
@@ -232,22 +233,22 @@ export default function Relatorios() {
         </div>
 
         {/* Relatórios segmentados */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 20 }}>
+        <div className="cols-3">
           {/* Faturamento por procedimento */}
           <div className="card" style={{ padding: '16px 20px' }}>
-            <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 2 }}>Faturamento por procedimento</div>
-            <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7', marginBottom: 14 }}>
+            <div style={{ font: "800 14px var(--font)", color: 'var(--ink)', marginBottom: 2 }}>Faturamento por procedimento</div>
+            <div style={{ font: "600 11.5px var(--font)", color: 'var(--muted)', marginBottom: 14 }}>
               concluídos × tabela de preços · total {brMoney(procFat.total)}
             </div>
-            {procFat.sorted.length === 0 && <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Nenhum procedimento concluído com preço no período.</div>}
+            {procFat.sorted.length === 0 && <div style={{ font: "600 12px var(--font)", color: 'var(--muted)' }}>Nenhum procedimento concluído com preço no período.</div>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
               {procFat.sorted.map(([proc, v]) => (
                 <div key={proc}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 5 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, font: "700 12.5px var(--font)", color: 'var(--ink)', marginBottom: 5 }}>
                     <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{proc}</span>
                     <span className="tnum" style={{ flex: 'none' }}>{brMoney(v)}</span>
                   </div>
-                  <div style={{ height: 8, borderRadius: 6, background: '#eef1f1' }}>
+                  <div style={{ height: 8, borderRadius: 6, background: 'var(--chip-bg)' }}>
                     <div style={{ width: `${(v / procFat.max) * 100}%`, height: '100%', borderRadius: 6, background: '#16a34a' }} />
                   </div>
                 </div>
@@ -257,12 +258,12 @@ export default function Relatorios() {
 
           {/* Faltas por dia da semana */}
           <div className="card" style={{ padding: '16px 20px' }}>
-            <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 2 }}>Faltas por dia da semana</div>
-            <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7', marginBottom: 14 }}>
+            <div style={{ font: "800 14px var(--font)", color: 'var(--ink)', marginBottom: 2 }}>Faltas por dia da semana</div>
+            <div style={{ font: "600 11.5px var(--font)", color: 'var(--muted)', marginBottom: 14 }}>
               {faltasDia.total} falta{faltasDia.total === 1 ? '' : 's'} no período
             </div>
             {faltasDia.total === 0 ? (
-              <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Nenhuma falta no período. 🎉</div>
+              <div style={{ font: "600 12px var(--font)", color: 'var(--muted)' }}>Nenhuma falta no período. 🎉</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {[1, 2, 3, 4, 5, 6, 0].map((wd) => {
@@ -270,11 +271,11 @@ export default function Relatorios() {
                   if (!n) return null
                   return (
                     <div key={wd} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                      <span style={{ width: 34, font: "600 12px 'Plus Jakarta Sans'", color: '#5b647a' }}>{WD_LABEL[wd]}</span>
-                      <div style={{ flex: 1, height: 8, borderRadius: 6, background: '#eef1f1' }}>
+                      <span style={{ width: 34, font: "600 12px var(--font)", color: 'var(--slate)' }}>{WD_LABEL[wd]}</span>
+                      <div style={{ flex: 1, height: 8, borderRadius: 6, background: 'var(--chip-bg)' }}>
                         <div style={{ width: `${(n / faltasDia.max) * 100}%`, height: '100%', borderRadius: 6, background: '#dc2626' }} />
                       </div>
-                      <span className="tnum" style={{ width: 22, textAlign: 'right', font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{n}</span>
+                      <span className="tnum" style={{ width: 22, textAlign: 'right', font: "700 12.5px var(--font)", color: 'var(--ink)' }}>{n}</span>
                     </div>
                   )
                 })}
@@ -284,18 +285,18 @@ export default function Relatorios() {
 
           {/* Origem dos leads */}
           <div className="card" style={{ padding: '16px 20px' }}>
-            <div style={{ font: "800 14px 'Plus Jakarta Sans'", color: '#26324a', marginBottom: 2 }}>Origem de leads e pacientes</div>
-            <div style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7', marginBottom: 14 }}>como conheceram a clínica</div>
-            {origens.sorted.length === 0 && <div style={{ font: "600 12px 'Plus Jakarta Sans'", color: '#8b93a7' }}>Nenhum lead ou paciente com origem registrada.</div>}
+            <div style={{ font: "800 14px var(--font)", color: 'var(--ink)', marginBottom: 2 }}>Origem de leads e pacientes</div>
+            <div style={{ font: "600 11.5px var(--font)", color: 'var(--muted)', marginBottom: 14 }}>como conheceram a clínica</div>
+            {origens.sorted.length === 0 && <div style={{ font: "600 12px var(--font)", color: 'var(--muted)' }}>Nenhum lead ou paciente com origem registrada.</div>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {origens.sorted.map(([origem, n], i) => (
                 <div key={origem} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                   <span style={{ width: 9, height: 9, borderRadius: 3, flex: 'none', background: ORIGEM_COLORS[i % ORIGEM_COLORS.length] }} />
-                  <span style={{ flex: 1, font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{origem}</span>
-                  <div style={{ width: 90, height: 7, borderRadius: 6, background: '#eef1f1' }}>
+                  <span style={{ flex: 1, font: "600 12.5px var(--font)", color: 'var(--slate)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{origem}</span>
+                  <div style={{ width: 90, height: 7, borderRadius: 6, background: 'var(--chip-bg)' }}>
                     <div style={{ width: `${(n / origens.max) * 100}%`, height: '100%', borderRadius: 6, background: ORIGEM_COLORS[i % ORIGEM_COLORS.length] }} />
                   </div>
-                  <span className="tnum" style={{ width: 22, textAlign: 'right', font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{n}</span>
+                  <span className="tnum" style={{ width: 22, textAlign: 'right', font: "700 12.5px var(--font)", color: 'var(--ink)' }}>{n}</span>
                 </div>
               ))}
             </div>
@@ -307,17 +308,4 @@ export default function Relatorios() {
 }
 
 const WD_LABEL = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
-const ORIGEM_COLORS = ['#3f6bf5', '#c2478a', '#d97706', '#16a34a', '#0f766e', '#64748b']
-
-function Kpi({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: string }) {
-  return (
-    <div className="card card-hover" style={{ padding: '17px 18px' }}>
-      <div style={{ font: "600 12.5px 'Plus Jakarta Sans'", color: '#8b93a7' }}>{label}</div>
-      <div className="tnum" style={{ font: "800 26px 'Plus Jakarta Sans'", color: '#26324a', margin: '7px 0 5px' }}><CountUp value={value} /></div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: tone }} />
-        <span style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>{sub}</span>
-      </div>
-    </div>
-  )
-}
+const ORIGEM_COLORS = ['var(--primary)', 'var(--brand-pink)', '#d97706', '#16a34a', '#0f766e', '#64748b']

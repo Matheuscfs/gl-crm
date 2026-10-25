@@ -7,8 +7,9 @@ import { useToast } from '../../components/Toast'
 import { useStore, type EventItem } from '../../store'
 import { supabase } from '../../lib/supabase'
 import { todayISO, addDays, parseISO, brDate } from '../../lib/dates'
-import { findPatientByName, contactPhone, waLink } from '../../lib/whats'
+import { findPatientForEvent, contactPhone, waLink } from '../../lib/whats'
 import type { Patient } from '../../data'
+import { retornoVencido } from '../../lib/retornos'
 
 /**
  * CRC · Central de Relacionamento (padrão Clinicorp): filas de oportunidades
@@ -29,10 +30,10 @@ export interface CrcOpp {
 }
 
 const TIPOS: Record<CrcTipo, { label: string; bg: string; fg: string }> = {
-  retorno: { label: 'Retorno', bg: '#e9eeff', fg: '#2f52e0' },
-  falta: { label: 'Falta', bg: '#fbeaea', fg: '#a81e1e' },
-  aniversario: { label: 'Aniversário', bg: '#fdf1e2', fg: '#9a5a06' },
-  estetica: { label: 'Estética', bg: '#fbe9f3', fg: '#c2478a' },
+  retorno: { label: 'Retorno', bg: 'var(--primary-bg)', fg: 'var(--primary-dark)' },
+  falta: { label: 'Falta', bg: 'var(--red-bg)', fg: 'var(--danger-text)' },
+  aniversario: { label: 'Aniversário', bg: 'var(--amber-bg)', fg: 'var(--amber-dark)' },
+  estetica: { label: 'Estética', bg: 'var(--brand-pink-bg)', fg: 'var(--brand-pink)' },
 }
 
 const CRC_STAGES = ['A contatar', 'Contatado', 'Agendado', 'Recuperado']
@@ -53,7 +54,7 @@ function deriveOpps(patients: Patient[], events: EventItem[]): CrcOpp[] {
 
   // Retornos vencidos
   for (const p of patients) {
-    if (!p.late) continue
+    if (!retornoVencido(p, today)) continue
     const quem = p.resp !== '—' && p.resp ? p.resp.split('·')[0].trim() : p.name
     opps.push({
       key: `ret:${p.name}`,
@@ -75,7 +76,7 @@ function deriveOpps(patients: Patient[], events: EventItem[]): CrcOpp[] {
     if (!cur || e.date > cur.date) faltas.set(e.child, e)
   }
   for (const e of faltas.values()) {
-    const p = findPatientByName(patients, e.child)
+    const p = findPatientForEvent(patients, e)
     const quem = p && p.resp !== '—' && p.resp ? p.resp.split('·')[0].trim() : e.child
     opps.push({
       key: `falta:${e.child}:${e.date}`,
@@ -140,15 +141,15 @@ interface CardProps {
 function CrcCardView({ o, stage, onWa, onMove, dragging }: CardProps) {
   const t = TIPOS[o.tipo]
   return (
-    <div className="card-hover" style={{ background: '#fff', border: '1px solid #eceff6', borderRadius: 11, padding: '11px 12px', marginBottom: 8, boxShadow: dragging ? '0 12px 24px -10px rgba(38,60,110,.5)' : undefined }}>
+    <div className="card-hover" style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 11, padding: '11px 12px', marginBottom: 8, boxShadow: dragging ? '0 12px 24px -10px rgba(38,60,110,.5)' : undefined }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <span style={{ font: "700 9.5px 'Plus Jakarta Sans'", color: t.fg, background: t.bg, padding: '2px 7px', borderRadius: 20 }}>{t.label}</span>
+            <span style={{ font: "700 9.5px var(--font)", color: t.fg, background: t.bg, padding: '2px 7px', borderRadius: 20 }}>{t.label}</span>
           </div>
-          <div style={{ font: "700 12.5px 'Plus Jakarta Sans'", color: '#26324a' }}>{o.name}</div>
-          {o.resp && <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#8b93a7', marginTop: 2 }}>{o.resp}</div>}
-          <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#5b647a', margin: '3px 0 8px' }}>{o.sub}</div>
+          <div style={{ font: "700 12.5px var(--font)", color: 'var(--ink)' }}>{o.name}</div>
+          {o.resp && <div style={{ font: "600 11px var(--font)", color: 'var(--muted)', marginTop: 2 }}>{o.resp}</div>}
+          <div style={{ font: "600 11px var(--font)", color: 'var(--slate)', margin: '3px 0 8px' }}>{o.sub}</div>
           <WaButton onClick={() => onWa(o)}>WhatsApp</WaButton>
         </div>
         <Menu
@@ -177,10 +178,10 @@ function CrcColumn({ index, count, children }: { index: number; count: number; c
   const { setNodeRef, isOver } = useDroppable({ id: `crc-${index}` })
   const done = index === CRC_STAGES.length - 1
   return (
-    <div ref={setNodeRef} style={{ width: 230, flex: 'none', background: isOver ? '#e9eeff' : '#eef2f9', borderRadius: 14, padding: '10px 10px 12px', transition: 'background 0.15s ease' }}>
+    <div ref={setNodeRef} style={{ width: 230, flex: 'none', background: isOver ? 'var(--primary-bg)' : 'var(--chip-bg)', borderRadius: 14, padding: '10px 10px 12px', transition: 'background 0.15s ease' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px 10px' }}>
-        <span style={{ font: "700 11.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>{CRC_STAGES[index]}</span>
-        <span style={{ minWidth: 22, height: 20, padding: '0 6px', borderRadius: 20, background: '#fff', color: done ? '#127436' : '#2f52e0', font: "800 11px 'Plus Jakarta Sans'", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{count}</span>
+        <span style={{ font: "700 11.5px var(--font)", color: 'var(--slate)' }}>{CRC_STAGES[index]}</span>
+        <span style={{ minWidth: 22, height: 20, padding: '0 6px', borderRadius: 20, background: 'var(--surface)', color: done ? 'var(--green-dark)' : 'var(--primary-dark)', font: "800 11px var(--font)", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{count}</span>
       </div>
       {children}
     </div>
@@ -260,7 +261,7 @@ export default function CrcBoard() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
         <SectionTitle>
           CRC · Central de Relacionamento{' '}
-          <span style={{ font: "600 11.5px 'Plus Jakarta Sans'", color: '#8b93a7' }}>
+          <span style={{ font: "600 11.5px var(--font)", color: 'var(--muted)' }}>
             · {abertas} oportunidade{abertas === 1 ? '' : 's'} em aberto, geradas dos seus dados
           </span>
         </SectionTitle>
@@ -274,7 +275,7 @@ export default function CrcBoard() {
       {opps.length === 0 ? (
         <div className="card" style={{ padding: '22px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
           <Icon name="chat" size={18} />
-          <span style={{ font: "600 12.5px 'Plus Jakarta Sans'", color: '#5b647a' }}>
+          <span style={{ font: "600 12.5px var(--font)", color: 'var(--slate)' }}>
             Nenhuma oportunidade no momento — sem retornos vencidos, faltas recentes ou aniversários na semana. 🎉
           </span>
         </div>
@@ -287,7 +288,7 @@ export default function CrcBoard() {
                   <DraggableCrcCard key={o.key} o={o} stage={i} onWa={openWa} onMove={move} />
                 ))}
                 {col.length === 0 && (
-                  <div style={{ font: "600 11px 'Plus Jakarta Sans'", color: '#aeb7c8', textAlign: 'center', padding: '14px 0' }}>Solte um card aqui</div>
+                  <div style={{ font: "600 11px var(--font)", color: 'var(--muted)', textAlign: 'center', padding: '14px 0' }}>Solte um card aqui</div>
                 )}
               </CrcColumn>
             ))}

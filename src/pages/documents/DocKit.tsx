@@ -1,8 +1,13 @@
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Button } from '../../components/Button'
+import { useEscLayer } from '../../components/layers'
 import { Icon } from '../../icons'
+import { useClinic, cidadeUf } from '../../lib/clinic'
+import { BRAND } from '../../brand'
+import { parseISO, todayISO } from '../../lib/dates'
 
-const CIDADE = 'Cascavel-PR'
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 
 export function Butterfly({ size = 22, color = '#c2478a' }: { size?: number; color?: string }) {
   return (
@@ -26,29 +31,35 @@ function DocHeader() {
   )
 }
 
+/** Rodapé com os dados de Configurações → Perfil da clínica (nada fixo no código). */
 function DocFooter() {
+  const clinic = useClinic()
+  const local = cidadeUf(clinic)
+  // endereço antigo podia guardar só a cidade: não repete
+  const contato = [clinic.address !== local ? clinic.address : '', local, clinic.phone].filter(Boolean).join(' · ')
   return (
     <div className="doc-footer">
-      <b>Dra. Gabriela Lorenzi</b><br />
-      Cirurgiã Dentista · CRO 39889
+      <b>{clinic.profissional}</b><br />
+      {clinic.especialidade} · {clinic.cro}
+      {contato && <><br /><span style={{ fontSize: 10 }}>{contato}</span></>}
     </div>
   )
 }
 
 /** Uma folha A4 com cabeçalho, marca d'água, título, conteúdo e rodapé. */
-export function DocSheet({ title, children }: { title: string; children: ReactNode }) {
+export function DocSheet({ title, children, rodape = true }: { title: string; children: ReactNode; rodape?: boolean }) {
   return (
     <div className="doc-sheet">
       <div className="doc-watermark">
         <div style={{ textAlign: 'center' }}>
           <div style={{ font: 'italic 700 160px Georgia, serif', color: '#c2478a' }}>GL</div>
-          <div style={{ font: "700 22px 'Plus Jakarta Sans'", letterSpacing: '0.3em', color: '#c2478a' }}>CIRURGIÃ DENTISTA</div>
+          <div style={{ font: "700 22px var(--font)", letterSpacing: '0.3em', color: '#c2478a' }}>CIRURGIÃ DENTISTA</div>
         </div>
       </div>
       <DocHeader />
       <div className="doc-title">{title}</div>
       <div className="doc-body">{children}</div>
-      <DocFooter />
+      {rodape && <DocFooter />}
     </div>
   )
 }
@@ -64,7 +75,22 @@ export interface DocCtx {
   treatments?: { date: string; proc: string; prof?: string; note?: string }[]
   /** Registros da aba Evolução (quando presentes, a Ficha de Evolução usa estes). */
   evolucoes?: { date: string; proc: string; prof?: string; note?: string }[]
-  teeth?: { num: number; state: string }[]
+  teeth?: { num: number; state: string; faces?: string }[]
+  /** Layout da dentição que está na tela (impressão a partir do Odontograma). */
+  dentLayout?: { titulo: string; sup: string[]; inf: string[] }
+  /** Paciente de demonstração: só aí os campos vazios recebem respostas de exemplo. */
+  demo?: boolean
+  /** Conteúdo de documento emitido (receita, atestado, declaração). */
+  emissao?: Emissao
+}
+
+export interface ItemReceita { med: string; qtd: string; posologia: string }
+export interface Emissao {
+  /** Data do documento (ISO). Padrão: hoje. */
+  data?: string
+  receita?: { uso: string; itens: ItemReceita[]; controleEspecial?: boolean }
+  atestado?: { inicio: string; fim: string; dias: number; cid?: string; cidAutorizado?: boolean; finalidade?: string }
+  declaracao?: { inicio: string; fim: string; para: 'paciente' | 'acompanhante'; acompanhante?: string }
 }
 
 export interface DocRef {
@@ -73,24 +99,47 @@ export interface DocRef {
   node: (blank: boolean, ctx: DocCtx) => ReactNode
 }
 
-/** Overlay em tela cheia com barra (Imprimir / Exportar PDF / Fechar) e uma ou mais folhas. */
-export function DocumentViewer({ open, onClose, docs, blank, ctx = {} }: { open: boolean; onClose: () => void; docs: DocRef[]; blank: boolean; ctx?: DocCtx }) {
+/**
+ * Tela cheia de documento: barra (Exportar PDF / Imprimir / Fechar) e as folhas A4.
+ * Vai para o <body> por portal — a animação de rota cria containing block e prenderia o
+ * position:fixed, e na impressão o resto do app sai do fluxo (cada folha vira uma página).
+ * Esc fecha. Base do `PrintDoc` (uma folha) e do `DocumentViewer` (pacote de documentos).
+ */
+export function DocOverlay({ open, titulo, onClose, children }: { open: boolean; titulo: string; onClose: () => void; children: ReactNode }) {
+  useEscLayer(open, onClose)
   if (!open) return null
-  const label = docs.length > 1 ? `Pacote — ${docs.length} documentos` : docs[0]?.title
-  return (
-    <div className="doc-overlay">
+  const imprimir = () => {
+    // o "Salvar como PDF" usa o título da página como nome do arquivo
+    const antes = document.title
+    document.title = titulo
+    window.addEventListener('afterprint', () => { document.title = antes }, { once: true })
+    window.print()
+  }
+  return createPortal(
+    <div className="doc-overlay" role="dialog" aria-modal="true" aria-label={titulo}>
       <div className="doc-toolbar">
-        <div className="doc-toolbar-title">{label}{blank ? ' · em branco' : ''}</div>
+        <div className="doc-toolbar-title">{titulo}</div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <Button variant="outline" onClick={() => window.print()}>Exportar PDF</Button>
-          <Button icon={<Icon name="print" size={16} />} onClick={() => window.print()}>Imprimir</Button>
+          <Button variant="outline" onClick={imprimir}>Exportar PDF</Button>
+          <Button icon={<Icon name="print" size={16} />} onClick={imprimir}>Imprimir</Button>
           <Button variant="ghost" onClick={onClose}>Fechar</Button>
         </div>
       </div>
+      {children}
+    </div>,
+    document.body,
+  )
+}
+
+/** Um ou mais documentos do catálogo (pacote) no `DocOverlay`. */
+export function DocumentViewer({ open, onClose, docs, blank, ctx = {} }: { open: boolean; onClose: () => void; docs: DocRef[]; blank: boolean; ctx?: DocCtx }) {
+  const label = (docs.length > 1 ? `Pacote — ${docs.length} documentos` : docs[0]?.title ?? 'Documento') + (blank ? ' · em branco' : '')
+  return (
+    <DocOverlay open={open} titulo={label} onClose={onClose}>
       {docs.map((d) => (
         <DocSheet key={d.key} title={d.title}>{d.node(blank, ctx)}</DocSheet>
       ))}
-    </div>
+    </DocOverlay>
   )
 }
 
@@ -134,13 +183,16 @@ export function Para({ children }: { children: ReactNode }) {
   return <p className="doc-p">{children}</p>
 }
 
-export function SignDate({ role, blank }: { role: string; blank: boolean }) {
+/** Local e data (de hoje, ou a do documento) + linha de assinatura. */
+export function SignDate({ role, blank, date }: { role: string; blank: boolean; date?: string }) {
+  const clinic = useClinic()
+  const d = parseISO(date || todayISO())
   return (
     <>
       <div style={{ marginTop: 26, fontSize: 12 }}>
-        {CIDADE}, <span className="doc-field-value" style={{ display: 'inline-block', width: 40 }}>{blank ? '' : '17'}</span> de{' '}
-        <span className="doc-field-value" style={{ display: 'inline-block', width: 90 }}>{blank ? '' : 'julho'}</span> de{' '}
-        <span className="doc-field-value" style={{ display: 'inline-block', width: 60 }}>{blank ? '' : '2026'}</span>.
+        {cidadeUf(clinic) || BRAND.city}, <span className="doc-field-value" style={{ display: 'inline-block', width: 40 }}>{blank ? '' : d.getDate()}</span> de{' '}
+        <span className="doc-field-value" style={{ display: 'inline-block', width: 90 }}>{blank ? '' : MESES[d.getMonth()]}</span> de{' '}
+        <span className="doc-field-value" style={{ display: 'inline-block', width: 60 }}>{blank ? '' : d.getFullYear()}</span>.
       </div>
       <div className="doc-sign">
         <div className="doc-sign-line">{role}</div>
