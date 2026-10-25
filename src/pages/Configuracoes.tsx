@@ -135,7 +135,7 @@ export default function Configuracoes() {
   return (
     <>
       <header className="topbar">
-        <div className="topbar-title">Configurações</div>
+        <h1 className="topbar-title">Configurações</h1>
       </header>
 
       <div className="settings-layout">

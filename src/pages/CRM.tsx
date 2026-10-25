@@ -190,7 +190,7 @@ export default function CRM() {
   return (
     <>
       <header className="topbar">
-        <div className="topbar-title">Relacionamento</div>
+        <h1 className="topbar-title">Relacionamento</h1>
         <Button icon={<Icon name="plus" size={17} />} onClick={() => setOpen(true)}>Novo lead</Button>
       </header>
 

@@ -207,11 +207,11 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="app">
       <Sidebar compact={compact} animating={animating} onToggle={toggle} onHelp={() => setOnboarding(true)} />
-      <div className="main">
+      <main className="main">
         <AppBar />
         <AvisoCarga />
         {children}
-      </div>
+      </main>
       <Onboarding open={onboarding} onClose={() => setOnboarding(false)} />
     </div>
   )

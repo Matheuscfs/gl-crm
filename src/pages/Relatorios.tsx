@@ -154,7 +154,7 @@ export default function Relatorios() {
   return (
     <>
       <header className="topbar">
-        <div className="topbar-title">Relatórios</div>
+        <h1 className="topbar-title">Relatórios</h1>
         <Dropdown label="Período" value={periodo} options={PERIODOS} onChange={setPeriodo} active />
       </header>
 

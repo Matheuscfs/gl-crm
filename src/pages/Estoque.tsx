@@ -370,7 +370,7 @@ export default function Estoque() {
   return (
     <>
       <header className="topbar">
-        <div className="topbar-title">Estoque</div>
+        <h1 className="topbar-title">Estoque</h1>
         <div className="topbar-actions">
           <label className="searchbox" style={{ width: 260 }}>
             <Icon name="search" size={18} />

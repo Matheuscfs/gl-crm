@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '../icons'
 import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
@@ -357,13 +357,14 @@ export default function Pacientes() {
                   const perfil = p.perfil ?? 'pediatrico'
                   const idade = idadeDe(p)
                   return (
-                    <div key={p.name} role="row" className={`prow clickable${vencido ? ' hot' : ''}`} onClick={() => abrirFicha(p)}>
+                    <div key={p._id ?? p.name} role="row" className={`prow clickable${vencido ? ' hot' : ''}`} onClick={() => abrirFicha(p)}>
                       <span className="q-person" role="cell">
                         <span className={`p-avatar${vencido ? ' hot' : perfil === 'estetico' ? ' est' : ''}`}>
                           <PatientPhoto src={p.photoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} fallback={p.initials} />
                         </span>
                         <span className="q-text">
-                          <span className="q-main">{p.name}</span>
+                          {/* o link deixa a ficha acessível pelo teclado; a linha inteira continua clicável no mouse */}
+                          <Link to={patientPath(p, 'odontograma')} className="q-main" onClick={(e) => e.stopPropagation()}>{p.name}</Link>
                           <span className="q-sub">{[idade && idade !== '—' ? idade : '', PERFIL[perfil].label.toLowerCase(), p.prontuario ? `pront. ${p.prontuario.replace(/^#/, '')}` : ''].filter(Boolean).join(' · ')}</span>
                         </span>
                       </span>

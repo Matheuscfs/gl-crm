@@ -54,7 +54,7 @@ export default function TabletShell({ children, onHelp }: { children: ReactNode;
 
   return (
     <div className="app tablet">
-      <div className="main">{children}</div>
+      <main className="main">{children}</main>
 
       <nav className="tabbar" aria-label="Navegação principal">
         {TABS.map((t) => (
