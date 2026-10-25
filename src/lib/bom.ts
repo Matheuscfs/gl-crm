@@ -80,12 +80,14 @@ export const BOM_PROCS = Object.keys(PROC_BOM)
 
 /** Encontra a ficha técnica cujo nome melhor casa com o procedimento informado. */
 export function bomFor(proc: string): BOMLine[] | null {
-  if (!proc) return null
-  const norm = proc.toLowerCase()
+  const norm = (proc ?? '').trim().toLowerCase()
+  if (!norm) return null
   // match direto
   const exact = BOM_PROCS.find((k) => k.toLowerCase() === norm)
   if (exact) return PROC_BOM[exact]
-  // match por inclusão (ex.: "Restauração em resina composta (74 O)")
-  const partial = BOM_PROCS.find((k) => norm.includes(k.toLowerCase()) || k.toLowerCase().includes(norm.split('(')[0].trim()))
+  // match por inclusão (ex.: "Restauração em resina composta (74 O)"); sem o nome antes do
+  // parêntese ("(74 O)") não há o que casar — antes isso devolvia a primeira ficha da lista
+  const base = norm.split('(')[0].trim()
+  const partial = BOM_PROCS.find((k) => norm.includes(k.toLowerCase()) || (base !== '' && k.toLowerCase().includes(base)))
   return partial ? PROC_BOM[partial] : null
 }
