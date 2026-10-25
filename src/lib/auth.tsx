@@ -83,10 +83,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSituacao((data as Situacao) ?? 'pendente')
   }, [])
 
+  // Re-check access when the signed-in user changes, not on every token refresh.
+  const userId = session?.user?.id
   useEffect(() => {
-    if (!session) { setSituacao(null); return }
+    if (!userId) { setSituacao(null); return }
     void conferirAcesso()
-  }, [session?.user?.id, conferirAcesso])
+  }, [userId, conferirAcesso])
 
   const value: AuthCtx = {
     session,

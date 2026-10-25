@@ -192,7 +192,6 @@ export default function Layout({ children }: { children: ReactNode }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tablet])
 
   // tablet/celular: shell estilo Apple Health (tab bar embaixo) no lugar do menu lateral

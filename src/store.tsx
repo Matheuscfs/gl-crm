@@ -221,7 +221,12 @@ const seedEstoqueRows: EstoqueItem[] = seedEstoque.map((e, i) => ({ ...e, _id: `
 const seedMovs: Movimento[] = seedMovimentacoes.map((m, i) => ({ id: `seed-mov${i}`, ...m }))
 
 /* ---------- mapeamentos linha ↔ objeto ---------- */
-const patientFromRow = (r: Record<string, any>): PatientRow => ({
+// Rows come back from Supabase untyped (no generated database types yet), so the
+// mappers below read loose records and normalise them into the app's types.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DbRow = Record<string, any>
+
+const patientFromRow = (r: DbRow): PatientRow => ({
   _id: r.id, initials: r.initials ?? initials(r.name), name: r.name, age: r.age ?? '', resp: r.resp ?? '', last: r.last ?? '',
   next: r.next ?? '', tipo: r.tipo ?? 'Particular', status: r.status ?? 'lead', perfil: r.perfil ?? 'pediatrico', late: r.late ?? false,
   birthdate: r.birthdate ?? '', sex: r.sex ?? '', cpf: r.cpf ?? '', phone: r.phone ?? '', respCpf: r.resp_cpf ?? '',
@@ -233,12 +238,12 @@ const patientToRow = (p: Partial<Patient>) => ({
   sex: p.sex, cpf: p.cpf, phone: p.phone, resp_cpf: p.respCpf, resp_phone: p.respPhone, prontuario: p.prontuario,
   origem: p.origem === undefined ? undefined : (p.origem || null), photo_url: p.photoUrl,
 })
-const eventFromRow = (r: Record<string, any>): EventItem => ({
+const eventFromRow = (r: DbRow): EventItem => ({
   id: r.id, date: (r.date as string) ?? addDays(THIS_MONDAY, r.day ?? 0), start: Number(r.start), dur: Number(r.dur), child: r.child,
   age: r.age ?? '', proc: r.proc ?? '', status: r.status as ApptStatus, kind: (r.kind ?? 'ped') as 'ped' | 'est',
   patientId: r.patient_id ?? undefined, procId: r.procedimento_id ?? undefined, cobradoEm: r.cobrado_em ?? undefined, gcalId: r.gcal_id ?? undefined, confirmadoEm: r.confirmado_em ?? undefined,
 })
-const estoqueFromRow = (r: Record<string, any>): EstoqueItem => ({
+const estoqueFromRow = (r: DbRow): EstoqueItem => ({
   _id: r.id, item: r.item, cat: r.cat ?? '', qtd: String(r.qtd), min: String(r.min), un: r.un ?? '', valor: r.valor ?? '',
   marca: r.marca ?? '', validade: r.validade ?? '', lote: r.lote ?? '', fornecedor: r.fornecedor ?? '',
   status: (r.status ?? 'ok') as EstoqueStatus, ent: r.ent ?? '', minAuto: !!r.min_auto,
@@ -293,12 +298,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!aR.error) setEvents(aR.data.map(eventFromRow))
       if (!lR.error) {
         const cols: FunilCol[] = STAGES.map((stage) => ({ stage, cards: [] }))
-        lR.data.forEach((r: any) => { const c = cols[r.stage ?? 0]; if (c) c.cards.push({ id: r.id, name: r.name, resp: r.resp ?? '', info: r.info ?? '', origem: r.origem ?? '' }) })
+        lR.data.forEach((r: DbRow) => { const c = cols[r.stage ?? 0]; if (c) c.cards.push({ id: r.id, name: r.name, resp: r.resp ?? '', info: r.info ?? '', origem: r.origem ?? '' }) })
         setFunil(cols)
       }
       if (!sR.error && sR.data.length > 0) setEstoque(sR.data.map(estoqueFromRow))
       if (!prR.error && prR.data.length > 0) {
-        setProcedimentos(prR.data.map((r: any) => {
+        setProcedimentos(prR.data.map((r: DbRow) => {
           const lines = (r.lines as BOMLine[] | null) ?? []
           // ficha técnica ausente no banco: herda a do catálogo local pelo nome
           const fallback = lines.length ? null : matchFicha(bomList, r.proc as string)
@@ -311,11 +316,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }))
       }
       if (!hR.error && hR.data.length > 0) {
-        setHorarios(hR.data.map((r: any) => ({ day: r.day as string, hours: (r.hours as string) ?? '', closed: !!r.closed })))
+        setHorarios(hR.data.map((r: DbRow) => ({ day: r.day as string, hours: (r.hours as string) ?? '', closed: !!r.closed })))
       }
       if (v26.current) {
         const { data } = await sb.from('stock_movements').select('*').order('created_at', { ascending: false }).limit(60)
-        if (!cancelled && data) setMovimentos(data.map((m: any) => ({ id: m.id, tipo: m.tipo, desc: m.descricao, when: rotuloQuando(m.created_at), delta: m.delta, kind: m.kind })))
+        if (!cancelled && data) setMovimentos(data.map((m: DbRow) => ({ id: m.id, tipo: m.tipo, desc: m.descricao, when: rotuloQuando(m.created_at), delta: m.delta, kind: m.kind })))
       }
       setErroCarga(erro)
       setCarga(erro ? 'erro' : 'pronto')

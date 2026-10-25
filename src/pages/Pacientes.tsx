@@ -150,7 +150,6 @@ export default function Pacientes() {
       return iso ? diffDays(hoje, iso) : 100000
     }
     return [...lista].sort((a, b) => chave(a) - chave(b) || a.name.localeCompare(b.name, 'pt-BR'))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, onlyOverdue, ageF, statusF, tipoF, perfilF, patients, vencidosDias, hoje])
 
   const porPerfil = (k: Perfil) => patients.filter((p) => (p.perfil ?? 'pediatrico') === k).length
