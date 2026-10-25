@@ -65,7 +65,7 @@ export default function FichaProcedimento() {
   return (
     <>
       <header className="topbar">
-        <div className="topbar-title">Ficha de Procedimento</div>
+        <h1 className="topbar-title">Ficha de Procedimento</h1>
         <div className="topbar-actions">
           <label className="searchbox" style={{ width: 260 }}>
             <Icon name="search" size={18} />
